@@ -28,7 +28,7 @@ O índice combina exposição a riscos climáticos, vulnerabilidade socioeconôm
 | v4 | saude | Inacessibilidade gravitacional a estabelecimentos de saúde (invertido: alto = menos acesso) | CNES |
 | v5 | infraestrutura | Percentual de domicílios sem coleta de esgoto, sem abastecimento de água e/ou sem coleta de lixo | Censo 2022 |
 
-### Exposição a Riscos Climáticos
+### Exposição
 
 | Código | Nome | Descrição | Fonte |
 |--------|------|-----------|-------|
@@ -38,7 +38,7 @@ O índice combina exposição a riscos climáticos, vulnerabilidade socioeconôm
 | e4 | calor | Anomalia de temperatura superficial média (2015–2024 vs. 1985–2010) | Landsat 5/7/8/9 / GEE |
 | e5 | queimadas | Percentual de domicílios em áreas com até 1 km de proximidade de focos de queimadas | INPE 2016–2025 |
 
-### Gestão Municipal
+### Capacidade de Gestão Municipal
 
 | Código | Nome | Descrição | Fonte |
 |--------|------|-----------|-------|
