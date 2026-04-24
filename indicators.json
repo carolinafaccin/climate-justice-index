@@ -1,22 +1,255 @@
 {
-  "e1": {"dimension": "exposicao", "col": "e1_des_norm", "file": "br_h3_e1_deslizamentos.parquet"},
-  "e2": {"dimension": "exposicao", "col": "e2_inu_norm", "file": "br_h3_e2_inundacoes.parquet"},
-  "e3": {"dimension": "exposicao", "col": "e3_cos_norm", "file": "br_h3_e3_costeira.parquet"},
-  "e4": {"dimension": "exposicao", "col": "e4_cal_norm", "file": "br_h3_e4_calor.parquet"},
-  "e5": {"dimension": "exposicao", "col": "e5_que_norm", "file": "br_h3_e5_queimadas.parquet"},
-  "v1": {"dimension": "vulnerabilidade", "col": "v1_ren_norm", "file": "br_h3_v1_renda.parquet"},
-  "v2": {"dimension": "vulnerabilidade", "col": "v2_mor_norm", "file": "br_h3_v2_moradia.parquet"},
-  "v3": {"dimension": "vulnerabilidade", "col": "v3_inf_norm", "file": "br_h3_v3_infraestrutura.parquet"},
-  "v4": {"dimension": "vulnerabilidade", "col": "v4_edu_norm", "file": "br_h3_v4_educacao.parquet"},
-  "v5": {"dimension": "vulnerabilidade", "col": "v5_sau_norm", "file": "br_h3_v5_saude.parquet"},
-  "p1": {"dimension": "grupos_prioritarios", "col": "p1_mul_norm", "file": "br_h3_p1_mulheres.parquet"},
-  "p2": {"dimension": "grupos_prioritarios", "col": "p2_cri_norm", "file": "br_h3_p2_criancas.parquet"},
-  "p3": {"dimension": "grupos_prioritarios", "col": "p3_ido_norm", "file": "br_h3_p3_idosos.parquet"},
-  "p4": {"dimension": "grupos_prioritarios", "col": "p4_pre_norm", "file": "br_h3_p4_pretos.parquet"},
-  "p5": {"dimension": "grupos_prioritarios", "col": "p5_ind_norm", "file": "br_h3_p5_indigenas.parquet"},
-  "g1": {"dimension": "gestao_municipal", "col": "g1_inv_norm", "file": "br_h3_g1_mun_investimento_despesas.parquet"},
-  "g2": {"dimension": "gestao_municipal", "col": "g2_par_norm", "file": "br_h3_g2_mun_participacao_nupdec.parquet"},
-  "g3": {"dimension": "gestao_municipal", "col": "g3_res_norm", "file": "br_h3_g3_mun_resposta_alerta.parquet"},
-  "g4": {"dimension": "gestao_municipal", "col": "g4_rec_norm", "file": "br_h3_g4_mun_reconhecimento_mapeamento.parquet"},
-  "g5": {"dimension": "gestao_municipal", "col": "g5_rep_norm", "file": "br_h3_g5_mun_reparacao_direitos.parquet"}
+  "file_prefix": "br_h3",
+  "dimensions": {
+    "grupos_prioritarios": {
+      "abbr": "IP",
+      "name": "Índice de Grupos Prioritários",
+      "invert": false,
+      "indicators": {
+        "p1": {
+          "name": "mulheres",
+          "abbr": "mul",
+          "description": "Percentual de domicílios chefiados por mulheres pretas e pardas",
+          "source": {
+            "source_dir": "ibge/censo/2022/agregados_por_setores/t0",
+            "num_cols": ["v01340", "v01344"],
+            "den_cols": ["v01042"]
+          }
+        },
+        "p2": {
+          "name": "populacao_negra",
+          "abbr": "neg",
+          "description": "Percentual de pessoas pretas e pardas",
+          "source": {
+            "source_dir": "ibge/censo/2022/agregados_por_setores/t0",
+            "num_cols": ["v01318", "v01320"],
+            "den_cols": ["v01006"]
+          }
+        },
+        "p3": {
+          "name": "indigenas_quilombolas",
+          "abbr": "ind",
+          "description": "Percentual de pessoas indígenas e quilombolas",
+          "source": {
+            "source_dir": "ibge/censo/2022/agregados_por_setores/t0",
+            "num_cols": ["v01690", "v03196"],
+            "den_cols": ["v01006"]
+          }
+        },
+        "p4": {
+          "name": "idosos",
+          "abbr": "ido",
+          "description": "Percentual de pessoas acima de 60 anos",
+          "source": {
+            "source_dir": "ibge/censo/2022/agregados_por_setores/t0",
+            "num_cols": ["v01040", "v01041"],
+            "den_cols": ["v01006"]
+          }
+        },
+        "p5": {
+          "name": "criancas",
+          "abbr": "cri",
+          "description": "Percentual de pessoas abaixo dos 14 anos",
+          "source": {
+            "source_dir": "ibge/censo/2022/agregados_por_setores/t0",
+            "num_cols": ["v01031", "v01032", "v01033"],
+            "den_cols": ["v01006"]
+          }
+        }
+      }
+    },
+    "vulnerabilidade": {
+      "abbr": "IV",
+      "name": "Índice de Vulnerabilidade",
+      "invert": false,
+      "indicators": {
+        "v1": {
+          "name": "renda",
+          "abbr": "ren",
+          "description": "Percentual de domicílios com renda do responsável até meio salário-mínimo",
+          "source": {
+            "source_dir": "ibge/censo/2022/agregados_por_setores/t0",
+            "num_cols": ["v06004_v06001"],
+            "den_cols": ["v06001"]
+          }
+        },
+        "v2": {
+          "name": "moradia",
+          "abbr": "mor",
+          "description": "Percentual de domicílios improvisados, sem banheiro, em casa de cômodos/cortiço ou com estrutura degradada",
+          "source": {
+            "source_dir": "ibge/censo/2022/agregados_por_setores/t0",
+            "num_cols": ["v00002", "v00050", "v00052", "v00238"],
+            "den_cols": ["v00001"]
+          }
+        },
+        "v3": {
+          "name": "educacao",
+          "abbr": "edu",
+          "description": "Percentual de pessoas acima de 15 anos que não sabem ler e escrever",
+          "source": {
+            "source_dir": "ibge/censo/2022/agregados_por_setores/t0",
+            "num_cols": ["v00853", "v00855", "v00857"],
+            "den_cols": ["v01006"]
+          }
+        },
+        "v4": {
+          "name": "saude",
+          "abbr": "sau",
+          "description": "Acessibilidade gravitacional a estabelecimentos de saúde (modelo CNES)",
+          "source": {
+            "file": "cnes/t1/cnes_estabelecimentos.csv"
+          }
+        },
+        "v5": {
+          "name": "infraestrutura",
+          "abbr": "inf",
+          "description": "Percentual de domicílios sem coleta de esgoto, sem abastecimento de água e/ou sem coleta de lixo",
+          "source": {
+            "source_dir": "ibge/censo/2022/agregados_por_setores/t0",
+            "num_cols": [
+              "v00311", "v00312", "v00313", "v00314", "v00315", "v00316",
+              "v00112", "v00113", "v00114", "v00115", "v00116", "v00117", "v00118",
+              "v00399", "v00400", "v00401", "v00402"
+            ],
+            "den_cols": ["v00001"]
+          }
+        }
+      }
+    },
+    "exposicao": {
+      "abbr": "IE",
+      "name": "Índice de Exposição",
+      "invert": false,
+      "indicators": {
+        "e1": {
+          "name": "deslizamentos",
+          "abbr": "des",
+          "description": "Percentual de áreas com ao menos 1 domicílio com suscetibilidade a deslizamentos de terra",
+          "source": {
+            "file": "mapbiomas/mapbiomas_landslides_2024.tif",
+            "cnefe_dir": "ibge/censo/2022/cnefe/cnefe_csv/por_uf"
+          }
+        },
+        "e2": {
+          "name": "inundacoes",
+          "abbr": "inu",
+          "description": "Percentual de domicílios em áreas com suscetibilidade a inundações, alagamentos e enxurradas",
+          "source": {
+            "file": "mapbiomas/mapbiomas_floods_2024.tif",
+            "cnefe_dir": "ibge/censo/2022/cnefe/cnefe_csv/por_uf"
+          }
+        },
+        "e3": {
+          "name": "mar",
+          "abbr": "mar",
+          "description": "Quantidade de domicílios em áreas de suscetibilidade a elevação do nível do mar",
+          "source": {
+            "dir": "gee/suscetibilidade-elevacao-nivel-mar"
+          }
+        },
+        "e4": {
+          "name": "calor",
+          "abbr": "cal",
+          "description": "Quantidade de domicílios em áreas com alta temperatura superficial média",
+          "source": {
+            "dir": "gee/anomalia_calor_1985-2025"
+          }
+        },
+        "e5": {
+          "name": "queimadas",
+          "abbr": "que",
+          "description": "Percentual de domicílios em áreas com até 1 km de proximidade de focos de queimadas",
+          "source": {
+            "dir": "inpe/queimadas"
+          }
+        }
+      }
+    },
+    "gestao_municipal": {
+      "abbr": "IG",
+      "name": "Índice de Gestão Municipal",
+      "invert": true,
+      "indicators": {
+        "g1": {
+          "name": "mun_investimento_despesas",
+          "abbr": "inv",
+          "description": "Despesas municipais per capita, entre 2015 e 2024, em gestão ambiental",
+          "source": {
+            "dir": "siconfi/t0"
+          }
+        },
+        "g2": {
+          "name": "mun_planejamento_contingencia",
+          "abbr": "pla",
+          "description": "Existência de Plano de Gerenciamento de Contingência",
+          "source": {
+            "file": "ibge/munic/t0/2023_saneamento/munic_2023_saneamento_drenagem.csv",
+            "col": "smap123",
+            "type": "binary"
+          }
+        },
+        "g3": {
+          "name": "mun_participacao_nupdec",
+          "abbr": "par",
+          "description": "Existência de Núcleos Comunitários de Proteção e Defesa Civil (Nupdec)",
+          "source": {
+            "file": "ibge/munic/t0/2020/munic_2020_gestao-de-riscos.csv",
+            "col": "mgrd213",
+            "type": "binary"
+          }
+        },
+        "g4": {
+          "name": "mun_governanca_conselhos",
+          "abbr": "gov",
+          "description": "Existência de Conselho Municipal de Meio Ambiente ou de Cidade/Desenvolvimento Urbano",
+          "source": {
+            "file": "ibge/munic/t0/2023_saneamento/munic_2023_saneamento_dados-gerais.csv",
+            "cols": ["sdg353", "sdg351"],
+            "type": "binary"
+          }
+        },
+        "g5": {
+          "name": "mun_resposta_alerta",
+          "abbr": "res",
+          "description": "Existência de sistemas de alerta de riscos",
+          "source": {
+            "file": "ibge/munic/t0/2023_saneamento/munic_2023_saneamento_drenagem.csv",
+            "col": "smap126",
+            "type": "binary"
+          }
+        },
+        "g6": {
+          "name": "mun_informacao_mapeamento",
+          "abbr": "map",
+          "description": "Existência de mapeamento e zoneamento de áreas de risco",
+          "source": {
+            "file": "ibge/munic/t0/2023_saneamento/munic_2023_saneamento_drenagem.csv",
+            "col": "smap122",
+            "type": "binary"
+          }
+        },
+        "g7": {
+          "name": "mun_reconhecimento_cadastro",
+          "abbr": "rec",
+          "description": "Existência de cadastro ou identificação de famílias em áreas de risco"
+        },
+        "g8": {
+          "name": "mun_reparacao_direitos",
+          "abbr": "rep",
+          "description": "Quantidade de políticas ou programas na área dos direitos humanos",
+          "source": {
+            "file": "ibge/munic/t0/2023/munic_2023_direitos-humanos.csv",
+            "cols": [
+              "mdhu571", "mdhu572", "mdhu573", "mdhu574", "mdhu575", "mdhu576",
+              "mdhu577", "mdhu578", "mdhu579", "mdhu5710", "mdhu5711", "mdhu5712",
+              "mdhu5713", "mdhu5714", "mdhu5715", "mdhu5716", "mdhu58", "mdhu61",
+              "mdhu64", "mdhu67", "mdhu69"
+            ],
+            "type": "count"
+          }
+        }
+      }
+    }
+  }
 }

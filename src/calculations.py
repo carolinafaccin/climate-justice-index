@@ -2,22 +2,30 @@ import pandas as pd
 import logging
 from . import config as cfg
 
-def calculate_simple_cji(df: pd.DataFrame) -> pd.DataFrame:
-    logging.info("Calculating CJI (Climate Justice Index) via Simple Average...")
+def calculate_simple_iic(df: pd.DataFrame) -> pd.DataFrame:
+    logging.info("Calculando Índice de Injustiça Climática via média simples...")
     df = df.copy()
 
-    # 1. Calculate the average for each dimension
-    for dimension, columns in cfg.DIMENSIONS.items():
-        # Ensure the columns exist; if not, they are ignored
-        existing_cols = [c for c in columns if c in df.columns]
-        df[f'ind_{dimension}'] = df[existing_cols].mean(axis=1)
-        logging.info(f"Dimension '{dimension}' calculated.")
+    # 1. Índice por dimensão (com inversão de IG)
+    dim_cols = []
+    for dim_name, dim_meta in cfg.DIMENSION_META.items():
+        indicator_keys = cfg.DIMENSIONS[dim_name]
+        existing = [k for k in indicator_keys if k in df.columns]
+        if not existing:
+            logging.warning(f"Dimensão '{dim_name}': nenhum indicador encontrado.")
+            continue
 
-    # 2. Final Index (Average of the 4 dimensions)
-    # List of columns created in the previous step
-    index_cols = [f'ind_{d}' for d in cfg.DIMENSIONS.keys()]
-    
-    # Final CJI = Simple average between Climate Exposure, Vulnerability, Priority Groups, and Governance Capacity
-    df['cji_final'] = df[index_cols].mean(axis=1)
-    
+        abbr = dim_meta['abbr'].lower()   # "ip", "iv", "ie", "ig"
+        dim_avg = df[existing].mean(axis=1)
+
+        if dim_meta['invert']:
+            dim_avg = 1.0 - dim_avg
+
+        df[abbr] = dim_avg
+        dim_cols.append(abbr)
+        logging.info(f"Dimensão '{dim_name}' → {dim_meta['abbr']} calculada (invertida={dim_meta['invert']}).")
+
+    # 2. IIC final: média simples dos índices de dimensão
+    df['iic_final'] = df[dim_cols].mean(axis=1)
+
     return df

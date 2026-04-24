@@ -1,5 +1,8 @@
 streamlit
+rasterio
 pandas
+numpy
+scipy
 geopandas
 shapely
 h3

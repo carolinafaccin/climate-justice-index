@@ -209,7 +209,6 @@ marimo/_lsp/
 __marimo__/
 
 # Others
-.DS_Store
 __pycache__/
 config.local.json
-etl/past/
+logs/

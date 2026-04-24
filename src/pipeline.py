@@ -7,6 +7,25 @@ from . import config as cfg
 from . import utils
 from . import calculations as calc
 
+def validate_inputs(files_dict: dict) -> list:
+    """Check all indicator files exist. Returns list of missing indicator keys."""
+    missing = [
+        key for key, path in files_dict.items()
+        if key != "base_metadata" and not Path(path).is_file()
+    ]
+    total = len(files_dict) - 1  # exclude base_metadata
+    found = total - len(missing)
+
+    if missing:
+        logging.warning(f"Input validation: {found}/{total} indicator files found.")
+        for key in missing:
+            logging.warning(f"  Missing [{key}]: {files_dict[key]}")
+    else:
+        logging.info(f"Input validation: all {total}/{total} indicator files found.")
+
+    return missing
+
+
 def consolidate_inputs(files_dict: dict, join_key: str) -> pd.DataFrame:
     df_master = None
     # Columns we want to bring ONLY from the base_metadata file
@@ -58,7 +77,10 @@ def consolidate_inputs(files_dict: dict, join_key: str) -> pd.DataFrame:
 
 def run_h3():
     logging.info("=== STARTING PIPELINE: H3 GRID (SIMPLIFIED) ===")
-    
+
+    # 0. Validate inputs
+    validate_inputs(cfg.FILES['h3'])
+
     # 1. Consolidate data
     df_data = consolidate_inputs(cfg.FILES['h3'], cfg.COL_ID_H3)
     
@@ -67,7 +89,7 @@ def run_h3():
         return
 
     # 2. Calculate the Index
-    df_calculated = calc.calculate_simple_cji(df_data)
+    df_calculated = calc.calculate_simple_iic(df_data)
 
     # =========================================================================
     # 3. DIAGNOSTICS FOR LOGS

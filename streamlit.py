@@ -4,6 +4,7 @@ import geopandas as gpd
 import leafmap.foliumap as leafmap
 from shapely.geometry import Polygon
 import h3
+from src import config as cfg
 
 # --- LÓGICA DE SENHA ---
 def check_password():
@@ -38,9 +39,9 @@ if not check_password():
     st.stop()  # Para a execução se a senha não for inserida/correta
 
 # Configuração da Página
-st.set_page_config(layout="wide", page_title="Atlas de Justiça Climática")
+st.set_page_config(layout="wide", page_title="Atlas de Injustiça Climática")
 
-st.title("Índice de Justiça Climática para municípios brasileiros")
+st.title("Índice de Injustiça Climática para municípios brasileiros")
 st.markdown("Análise intramunicipal através de hexágonos H3 (resolução 9).")
 
 # ==============================================================================
@@ -48,11 +49,8 @@ st.markdown("Análise intramunicipal através de hexágonos H3 (resolução 9)."
 # ==============================================================================
 @st.cache_data
 def load_data():
-    path = "data/streamlit/br_h3_res9_v1_ijc.parquet"
-    # Carregando apenas colunas necessárias
-    cols = ['h3_id', 'nm_mun', 'nm_uf', 'ijc_final']
-    
-    # Tratamento na leitura para evitar erros de tipo
+    path = cfg.FILES['output']['h3_final']
+    cols = ['h3_id', 'nm_mun', 'nm_uf', 'iic_final']
     df = pd.read_parquet(path, columns=cols)
     return df
 
@@ -112,12 +110,12 @@ if st.sidebar.button("Gerar Mapa", type="primary"):
     
     m.add_data(
         data=gdf_city,
-        column="ijc_final",
+        column="iic_final",
         scheme="UserDefined",
         classification_kwds={'bins': [0.2754, 0.4725, 0.6453, 0.8040]},
         colors=paleta,
-        legend_title="IJC Final",
-        layer_name="Justiça Climática",
+        legend_title="Índice de Injustiça Climática",
+        layer_name="Injustiça Climática",
         # --- AQUI ESTÃO AS MUDANÇAS DE ESTILO ---
         style_kwds={
             "stroke": False,      # Remove o contorno azul (o jeito mais limpo)
@@ -130,9 +128,9 @@ if st.sidebar.button("Gerar Mapa", type="primary"):
 
     # Métricas
     c1, c2, c3 = st.columns(3)
-    c1.metric("Média IJC", f"{df_city['ijc_final'].mean():.3f}")
-    c2.metric("Pior Hexágono", f"{df_city['ijc_final'].min():.3f}")
-    c3.metric("Melhor Hexágono", f"{df_city['ijc_final'].max():.3f}")
+    c1.metric("IIC médio", f"{df_city['iic_final'].mean():.3f}")
+    c2.metric("Mais injusto", f"{df_city['iic_final'].max():.3f}")
+    c3.metric("Menos injusto", f"{df_city['iic_final'].min():.3f}")
 
 else:
     st.info("👈 Selecione uma cidade e clique em 'Gerar Mapa' para visualizar.")

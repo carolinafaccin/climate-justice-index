@@ -14,30 +14,23 @@ from src import config as cfg
 from src import utils
 
 # ==============================================================================
-# 2. BUSINESS RULES (CENSUS LOGIC)
+# 2. BUSINESS RULES (CENSUS LOGIC) — derived from indicators.json
 # ==============================================================================
 CENSUS_LOGIC = {
-    "v1": {"num_cols": ["v06004_v06001"], "den_cols": ["v06001"], "invert": False},
-    "v2": {"num_cols": ["v00238"], "den_cols": ["v00001"], "invert": True},
-    "v4": {"num_cols": ["v00853", "v00855", "v00857"], "den_cols": ["v01006"], "invert": True},
-    "p1": {"num_cols": ["v01063"], "den_cols": ["v01042"], "invert": True},
-    "p2": {"num_cols": ["v01031"], "den_cols": ["v01006"], "invert": True},
-    "p3": {"num_cols": ["v01040", "v01041"], "den_cols": ["v01006"], "invert": True},
-    "p4": {"num_cols": ["v01318", "v01320"], "den_cols": ["v01006"], "invert": True},
-    "p5": {"num_cols": ["v01500", "v03000"], "den_cols": ["v00001"], "invert": True},
+    k: v["source"]
+    for k, v in cfg.INDICATORS.items()
+    if "source" in v and "source_dir" in v["source"]
 }
 
-REQUIRED_RAW_VARS = [
-    'v06001', 'v06004', 'v00001', 'v00238', 'v00853', 'v00855', 'v00857', 
-    'v01006', 'v01031', 'v01040', 'v01041', 'v01042', 'v01063', 'v01318', 
-    'v01320', 'v01500', 'v03000'
-]
+# Collect all raw variable names referenced; v06004_v06001 is computed, add its raw parts
+_all_refs = {col for logic in CENSUS_LOGIC.values() for col in logic["num_cols"] + logic["den_cols"]}
+REQUIRED_RAW_VARS = sorted((_all_refs - {"v06004_v06001"}) | {"v06004"})
 
 # ==============================================================================
-# 3. PATHS
+# 3. PATHS — source_dir read from first census source entry in indicators.json
 # ==============================================================================
-# Removido /t0 conforme sua verificação de pasta física
-input_dir = cfg.RAW_DIR / 'ibge' / 'censo' / '2022' / 'agregados_por_setores' / 't0'
+_source_dir = next(v["source"]["source_dir"] for v in cfg.INDICATORS.values() if "source" in v and "source_dir" in v["source"])
+input_dir = cfg.RAW_DIR / _source_dir
 h3_path = cfg.FILES_H3["base_metadata"]
 now = datetime.now().strftime("%Y%m%d_%H%M%S")
 DIAGNOSTIC_TXT = cfg.DIAGNOSE_DIR / f'diagnostic_h3_censo2022_{now}.txt'
@@ -119,15 +112,14 @@ for ind_key, logic in CENSUS_LOGIC.items():
     num = df_hex[[c for c in logic['num_cols'] if c in df_hex.columns]].sum(axis=1)
     den = df_hex[[c for c in logic['den_cols'] if c in df_hex.columns]].sum(axis=1)
     
-    # BLINDAGEM: Trata divisão por zero e infinitos
+# BLINDAGEM: Trata divisão por zero e limita o teto em 1.0 (100%)
     with np.errstate(divide='ignore', invalid='ignore'):
         abs_val = num / den
         abs_val = abs_val.replace([np.inf, -np.inf], 0).fillna(0)
     
     # Normalização
     norm_val = utils.normalize_minmax(abs_val, winsorize=True)
-    if logic['invert']: norm_val = 1.0 - norm_val
-        
+
     df_export = pd.DataFrame({'h3_id': df_hex['h3_id'], col_abs: abs_val, col_norm: norm_val})
     
     out_path = cfg.FILES_H3[ind_key]

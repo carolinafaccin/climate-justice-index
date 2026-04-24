@@ -50,7 +50,7 @@ _formatted_version = INDEX_VERSION.replace('.', '_')
 # Main file names
 FILE_BASE_H3 = "br_h3_res9.parquet"
 BASE_H3_DIR = RAW_DIR / "h3" / FILE_BASE_H3
-FILE_FINAL_INDEX = f"br_h3_res9_ijc_{_formatted_version}.parquet"
+FILE_FINAL_INDEX = f"br_h3_res9_iic_{_formatted_version}.parquet"
 
 # ==============================================================================
 # 3. METADATA LOADING (INDICATORS)
@@ -59,28 +59,37 @@ INDICATORS_PATH = BASE_DIR / "indicators.json"
 
 if INDICATORS_PATH.exists():
     with open(INDICATORS_PATH, 'r', encoding='utf-8') as f:
-        INDICATORS = json.load(f)
+        _raw = json.load(f)
 else:
     print(f"Warning: File {INDICATORS_PATH} not found.")
-    INDICATORS = {}
+    _raw = {"file_prefix": "br_h3", "dimensions": {}}
 
 # ==============================================================================
 # 4. AUTOMATIC DICTIONARY GENERATION
 # ==============================================================================
-# Alterado de MAPA_COLUNAS para COLUMN_MAP
-COLUMN_MAP = {k: v['col'] for k, v in INDICATORS.items()}
+FILE_PREFIX = _raw.get("file_prefix", "br_h3")
 
-FILES_H3 = {k: CLEAN_DIR / v['file'] for k, v in INDICATORS.items()}
-
-# Alterado de "base_metadados" para "base_metadata"
-FILES_H3["base_metadata"] = BASE_H3_DIR
-
-# Alterado de DIMENSOES para DIMENSIONS
+# Flatten nested structure: {key: {dimension, name, abbr, ...}}
+INDICATORS = {}
 DIMENSIONS = {}
-for k, v in INDICATORS.items():
-    # Puxa a chave "dimension" (ou "dimensao" se ainda não tiver traduzido o JSON)
-    dim = v.get('dimension', v.get('dimensao')) 
-    DIMENSIONS.setdefault(dim, []).append(k)
+DIMENSION_META = {}
+for dim, dim_data in _raw.get("dimensions", {}).items():
+    DIMENSION_META[dim] = {
+        "abbr":   dim_data.get("abbr", dim),
+        "name":   dim_data.get("name", dim),
+        "invert": dim_data.get("invert", False),
+    }
+    ind_map = dim_data.get("indicators", {})
+    DIMENSIONS[dim] = list(ind_map.keys())
+    for key, meta in ind_map.items():
+        INDICATORS[key] = {"dimension": dim, **meta}
+
+# col  = "{key}_{abbr}_norm"   e.g. "p1_mul_norm"
+# file = "{prefix}_{key}_{name}.parquet"  e.g. "br_h3_p1_mulheres.parquet"
+COLUMN_MAP = {k: f"{k}_{v['abbr']}_norm" for k, v in INDICATORS.items()}
+FILES_H3   = {k: CLEAN_DIR / f"{FILE_PREFIX}_{k}_{v['name']}.parquet" for k, v in INDICATORS.items()}
+
+FILES_H3["base_metadata"] = BASE_H3_DIR
 
 FILES = {
     "h3": FILES_H3,

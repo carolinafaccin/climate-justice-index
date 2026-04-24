@@ -8,19 +8,23 @@ from pathlib import Path
 from datetime import datetime
 
 """
-Gravitational Accessibility Model.
+Modelo Gravitacional de Acessibilidade a Saúde (v4 — CNES).
 
-Measurement of the "Force of Attraction" of healthcare infrastructure. A large hospital attracts people from far away (high weight), while a small health post attracts people only from neighboring streets.
+Mede a "força de atração" da infraestrutura de saúde sobre cada hexágono.
+Estabelecimentos maiores (mais serviços) atraem de mais longe; quanto maior
+a distância, menor a influência do estabelecimento sobre o hexágono.
 
-We calculate an index by dividing Capacity by Distance.
-If the distance increases, the value of that hospital for the hexagon decreases.
+Fórmula:
+    v4_sau_abs = Σ [ capacity_score_j / (distância_j_metros + 100) ]
 
-For perfect accuracy, we use a fast algorithm to find the 3 closest health facilities to each hexagon.
-Thus, if the hexagon is next to a small post, but 2km away from a large hospital, the calculation will sum the influence of both.
+    O buffer de 100m evita divisão por zero quando o hexágono coincide com
+    o estabelecimento. Considera as 3 unidades mais próximas (k=3).
 
-The formula for the absolute column will be:
-v5_sau_abs = Sum( Capacity / (Distance_in_meters + 100) )
-(We add 100 meters to the base just to avoid dividing by zero if a hexagon is glued to the hospital).
+Direção do indicador:
+    v4_sau_abs alto  →  boa acessibilidade  →  MENOS vulnerável.
+    Para ser consistente com os demais indicadores de vulnerabilidade
+    (onde alto = mais vulnerável), o col_norm é INVERTIDO: 1 − norm.
+    Assim, col_norm alto = inacessibilidade alta = mais vulnerável.
 """
 
 # ==============================================================================
@@ -30,31 +34,42 @@ PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 sys.path.append(PROJECT_ROOT)
 
 from src import config as cfg
+from src import utils
 
 # ==============================================================================
 # 2. PATHS, COLUMNS AND DIAGNOSTIC DEFINITION
 # ==============================================================================
 # Input paths (Pulled directly from config.py)
 h3_path = cfg.FILES_H3["base_metadata"]
-cnes_path = cfg.RAW_DIR / 'cnes' / 'cnes_estabelecimentos.csv'
+cnes_path = cfg.RAW_DIR / cfg.INDICATORS["v4"]["source"]["file"]
 
-# Output path 
-output_path = cfg.FILES_H3["v5"]
+# Output path
+output_path = cfg.FILES_H3["v4"]
 
 # Dynamic column names (Pulled straight from indicators.json via config)
-# If col_norm is 'v5_sau_norm', the code automatically creates 'v5_sau_abs' and 'v5_sau_log'
-col_norm = cfg.COLUMN_MAP["v5"]
+# If col_norm is 'v4_sau_norm', the code automatically creates 'v4_sau_abs' and 'v4_sau_log'
+col_norm = cfg.COLUMN_MAP["v4"]
 col_abs = col_norm.replace('_norm', '_abs')
 col_log = col_norm.replace('_norm', '_log')
 
 # Diagnostic log configuration
 now = datetime.now().strftime("%Y%m%d_%H%M%S")
-DIAGNOSTIC_TXT = cfg.DIAGNOSE_DIR / f'diagnostic_h3_v5_cnes_{now}.txt'
+DIAGNOSTIC_TXT = cfg.DIAGNOSE_DIR / f'diagnostic_h3_v4_cnes_{now}.txt'
+
+# ==============================================================================
+# BUSINESS PARAMETERS
+# ==============================================================================
+CNES_SERVICES = [
+    'st_centro_cirurgico', 'st_centro_obstetrico', 'st_centro_neonatal',
+    'st_atend_hospitalar', 'st_servico_apoio', 'st_atend_ambulatorial'
+]
+N_NEAREST_FACILITIES = 3   # k in kd-tree query
+DISTANCE_BUFFER_M    = 100 # added to distance to avoid division by zero
 
 # =====================================================================
 # 3. DATA LOADING AND STANDARDIZATION
 # =====================================================================
-print("Starting ETL Pipeline - V5 CNES...")
+print("Starting ETL Pipeline - V4 CNES...")
 print("1/5 - Loading data...")
 
 df_h3 = pd.read_parquet(h3_path)
@@ -70,22 +85,16 @@ df_cnes.columns = df_cnes.columns.str.lower()
 # 4. CNES PROCESSING (COORDINATES AND CAPACITY)
 # =====================================================================
 print("2/5 - Cleaning coordinates and calculating Capacity Score...")
-df_cnes['nu_latitude'] = pd.to_numeric(df_cnes['nu_latitude'], errors='coerce')
-df_cnes['nu_longitude'] = pd.to_numeric(df_cnes['nu_longitude'], errors='coerce')
-df_cnes = df_cnes.dropna(subset=['nu_latitude', 'nu_longitude'])
+df_cnes['latitude'] = pd.to_numeric(df_cnes['latitude'], errors='coerce')
+df_cnes['longitude'] = pd.to_numeric(df_cnes['longitude'], errors='coerce')
+df_cnes = df_cnes.dropna(subset=['latitude', 'longitude'])
 
-# We keep raw dataset column names in Portuguese
-services = [
-    'st_centro_cirurgico', 'st_centro_obstetrico', 'st_centro_neonatal',
-    'st_atend_hospitalar', 'st_servico_apoio', 'st_atend_ambulatorial'
-]
-
-for col in services:
+for col in CNES_SERVICES:
     if col in df_cnes.columns:
         df_cnes[col] = pd.to_numeric(df_cnes[col], errors='coerce').fillna(0)
 
 # Facility Capacity Score (Weight)
-df_cnes['capacity_score'] = df_cnes[services].sum(axis=1) + 1
+df_cnes['capacity_score'] = df_cnes[CNES_SERVICES].sum(axis=1) + 1
 
 # =====================================================================
 # 5. SPATIAL PREPARATION (CONVERSION TO METERS - EPSG:5880)
@@ -95,7 +104,7 @@ print("3/5 - Converting coordinates to metric system (SIRGAS 2000)...")
 # Transforms CNES into GeoDataFrame and converts to meters
 gdf_cnes = gpd.GeoDataFrame(
     df_cnes, 
-    geometry=gpd.points_from_xy(df_cnes.nu_longitude, df_cnes.nu_latitude),
+    geometry=gpd.points_from_xy(df_cnes.longitude, df_cnes.latitude),
     crs="EPSG:4326"
 ).to_crs("EPSG:5880")
 
@@ -125,8 +134,8 @@ coords_h3 = np.array(list(zip(gdf_h3.geometry.x, gdf_h3.geometry.y)))
 capacities = gdf_cnes['capacity_score'].values
 
 tree = cKDTree(coords_cnes)
-distances, indices = tree.query(coords_h3, k=3)
-gravitational_weights = capacities[indices] / (distances + 100)
+distances, indices = tree.query(coords_h3, k=N_NEAREST_FACILITIES)
+gravitational_weights = capacities[indices] / (distances + DISTANCE_BUFFER_M)
 
 # Uses the dynamic column name!
 df_h3[col_abs] = np.sum(gravitational_weights, axis=1)
@@ -141,14 +150,8 @@ print("5/5 - Applying logarithmic function, normalizing and saving...")
 # Applies logarithmic function to flatten giant outliers
 df_h3[col_log] = np.log1p(df_h3[col_abs])
 
-# Min-Max Normalization (scale 0 to 1)
-min_val = df_h3[col_log].min()
-max_val = df_h3[col_log].max()
-
-if max_val > min_val:
-    df_h3[col_norm] = (df_h3[col_log] - min_val) / (max_val - min_val)
-else:
-    df_h3[col_norm] = 0.0
+# Invert: high accessibility → low vulnerability score (consistent with other v* indicators)
+df_h3[col_norm] = 1.0 - utils.normalize_minmax(df_h3[col_log], winsorize=True)
 
 # Remove the intermediate log column
 df_h3 = df_h3.drop(columns=[col_log])
@@ -168,7 +171,7 @@ print("Generating diagnostic file...")
 
 with open(DIAGNOSTIC_TXT, 'w', encoding='utf-8') as f:
     f.write("="*50 + "\n")
-    f.write("GRAVITATIONAL MODEL AND DISTANCE DIAGNOSTIC (V5 - CNES)\n")
+    f.write("GRAVITATIONAL MODEL AND DISTANCE DIAGNOSTIC (V4 - CNES)\n")
     f.write("="*50 + "\n\n")
     
     f.write(f"Total CNES facilities processed: {len(df_cnes):,}\n")

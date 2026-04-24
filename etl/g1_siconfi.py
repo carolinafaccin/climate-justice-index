@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import sys
-from scipy.stats import mstats
 from pathlib import Path
 from datetime import datetime
 
@@ -12,9 +11,10 @@ PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 sys.path.append(PROJECT_ROOT)
 
 from src import config as cfg
+from src import utils
 
 # ==============================================================================
-# 2. BUSINESS PARAMETERS (EASY CONFIGURATION)
+# 2. BUSINESS PARAMETERS
 # ==============================================================================
 # Change these variables to easily adjust the indicator's logic in the future
 TARGET_YEARS = range(2015, 2025) # 2015 to 2024 (10 years)
@@ -24,14 +24,15 @@ TARGET_ACCOUNT = "18 - Gestão Ambiental" # Exact string from the IBGE/Siconfi f
 # ==============================================================================
 # 3. PATHS, COLUMNS AND DIAGNOSTIC DEFINITION
 # ==============================================================================
-input_dir = cfg.RAW_DIR / 'siconfi' / 't0' # Reading directly from raw!
+input_dir = cfg.RAW_DIR / cfg.INDICATORS["g1"]["source"]["dir"]
 
 h3_path = cfg.FILES_H3["base_metadata"]
 output_path = cfg.FILES_H3["g1"]
 
 # Dynamic column names (from indicators.json)
 col_norm = cfg.COLUMN_MAP["g1"]
-col_abs = col_norm.replace('_norm', '_abs')
+col_abs  = col_norm.replace('_norm', '_abs')
+col_log  = col_norm.replace('_norm', '_log')
 
 # Diagnostic log configuration
 now = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -92,9 +93,10 @@ for year in TARGET_YEARS:
     else:
         print(f"  ⚠️ Warning: Raw file not found for the year {year}")
 
-# Consolidate sum of all 10 years by municipality
-print("  -> Aggregating total values per municipality...")
-df_siconfi = pd.concat(all_dfs).groupby('cd_mun')['valor_per_capita'].sum().reset_index()
+# Average annual per capita across available years
+# (mean is robust to missing years; sum would penalize municipalities with fewer data points)
+print("  -> Aggregating mean annual per capita per municipality...")
+df_siconfi = pd.concat(all_dfs).groupby('cd_mun')['valor_per_capita'].mean().reset_index()
 
 # Rename dynamically using the col_abs variable
 df_siconfi.rename(columns={'valor_per_capita': col_abs}, inplace=True)
@@ -105,29 +107,34 @@ df_siconfi.rename(columns={'valor_per_capita': col_abs}, inplace=True)
 print("2/4 - Loading H3 base and merging data...")
 df_h3 = pd.read_parquet(h3_path)
 
-# Standardize join key to text (string)
-df_siconfi['cd_mun'] = df_siconfi['cd_mun'].astype(str)
-df_h3['cd_mun'] = df_h3['cd_mun'].astype(str)
+# Standardize join key to 7-digit string (IBGE standard)
+# Siconfi sometimes exports 6-digit codes (without check digit) — pad to 7 if needed
+df_siconfi['cd_mun'] = df_siconfi['cd_mun'].astype(str).str.strip()
+df_h3['cd_mun']      = df_h3['cd_mun'].astype(str).str.strip()
+
+siconfi_len = df_siconfi['cd_mun'].str.len().mode()[0]
+h3_len      = df_h3['cd_mun'].str.len().mode()[0]
+if siconfi_len != h3_len:
+    print(f"  ⚠️ cd_mun length mismatch: Siconfi={siconfi_len} digits, H3={h3_len} digits — truncating to {min(siconfi_len, h3_len)}.")
+    trunc = min(siconfi_len, h3_len)
+    df_siconfi['cd_mun'] = df_siconfi['cd_mun'].str[:trunc]
+    df_h3['cd_mun']      = df_h3['cd_mun'].str[:trunc]
 
 # Join between H3 and Siconfi (filling NA dynamically)
 df_final = df_h3.merge(df_siconfi, on='cd_mun', how='left').fillna({col_abs: 0})
+
+n_matched = df_final[col_abs].gt(0).sum()
+print(f"   Hexágonos com investimento > 0: {n_matched:,} / {len(df_final):,}")
 
 # ==============================================================================
 # 7. OUTLIER TREATMENT AND NORMALIZATION
 # ==============================================================================
 print("3/4 - Treating outliers and normalizing...")
 
-# Outlier Treatment (Winsorizing at 1% and 99%)
-df_final[col_abs] = mstats.winsorize(df_final[col_abs], limits=[0.01, 0.01])
-
-# Normalization (0 to 1)
-v_min = df_final[col_abs].min()
-v_max = df_final[col_abs].max()
-
-if v_max - v_min > 0:
-    df_final[col_norm] = (df_final[col_abs] - v_min) / (v_max - v_min)
-else:
-    df_final[col_norm] = 0
+# log1p compresses the right tail (most municipalities spend little; a few spend a lot)
+df_final[col_log]  = np.log1p(df_final[col_abs])
+df_final[col_norm] = utils.normalize_minmax(df_final[col_log], winsorize=True)
+df_final = df_final.drop(columns=[col_log])
 
 # ==============================================================================
 # 8. EXPORT (Parquet)
