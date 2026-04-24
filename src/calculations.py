@@ -1,10 +1,25 @@
+import numpy as np
 import pandas as pd
 import logging
 from . import config as cfg
 
+
+def _nanmean_cols(df: pd.DataFrame, cols: list) -> pd.Series:
+    """Row-wise mean across cols, one column at a time to avoid allocating a full (n_rows × n_cols) matrix."""
+    total = np.zeros(len(df), dtype='float64')
+    count = np.zeros(len(df), dtype='int32')
+    for c in cols:
+        vals = df[c].to_numpy(dtype='float64', na_value=np.nan)
+        valid = ~np.isnan(vals)
+        total[valid] += vals[valid]
+        count[valid] += 1
+    with np.errstate(invalid='ignore'):
+        result = np.where(count > 0, total / count, np.nan)
+    return pd.Series(result, index=df.index, dtype='float64')
+
+
 def calculate_simple_iic(df: pd.DataFrame) -> pd.DataFrame:
     logging.info("Calculando Índice de Injustiça Climática via média simples...")
-    df = df.copy()
 
     # 1. Índice por dimensão (com inversão de IG)
     dim_cols = []
@@ -16,7 +31,7 @@ def calculate_simple_iic(df: pd.DataFrame) -> pd.DataFrame:
             continue
 
         abbr = dim_meta['abbr'].lower()   # "ip", "iv", "ie", "ig"
-        dim_avg = df[existing].mean(axis=1)
+        dim_avg = _nanmean_cols(df, existing)
 
         if dim_meta['invert']:
             dim_avg = 1.0 - dim_avg
@@ -26,6 +41,6 @@ def calculate_simple_iic(df: pd.DataFrame) -> pd.DataFrame:
         logging.info(f"Dimensão '{dim_name}' → {dim_meta['abbr']} calculada (invertida={dim_meta['invert']}).")
 
     # 2. IIC final: média simples dos índices de dimensão
-    df['iic_final'] = df[dim_cols].mean(axis=1)
+    df['iic_final'] = _nanmean_cols(df, dim_cols)
 
     return df

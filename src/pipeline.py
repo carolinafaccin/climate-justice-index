@@ -40,6 +40,10 @@ def consolidate_inputs(files_dict: dict, join_key: str) -> pd.DataFrame:
         # Keep only join_key + existing metadata columns
         existing_cols = [join_key] + [c for c in METADATA_COLS if c in df_master.columns]
         df_master = df_master[existing_cols]
+        # Base has one row per (h3_id, census sector) pair — deduplicate to one row per hexagon
+        n_before = len(df_master)
+        df_master = df_master.drop_duplicates(subset=[join_key])
+        logging.info(f"Base deduplicated: {n_before:,} rows → {len(df_master):,} unique hexagons.")
     else:
         logging.error("base_metadata file not found! Merge will fail.")
         return None
@@ -101,15 +105,26 @@ def run_h3():
     logging.info(f"Total columns generated: {len(columns)}")
     logging.info(f"List of columns: {columns}")
     
-    # B) Logging statistics (only numeric columns to avoid breaking)
-    # .to_string() is essential here so Pandas formats it as text in the log
-    statistics = df_calculated.describe().to_string()
-    logging.info(f"Statistical Summary of Final DataFrame:\n{statistics}")
+    # B) Per-column statistics (column-by-column to avoid large matrix allocation)
+    for col in df_calculated.select_dtypes(include='number').columns:
+        s = df_calculated[col].dropna()
+        logging.info(f"  {col}: n={len(s):,}  mean={s.mean():.4f}  std={s.std():.4f}  min={s.min():.4f}  max={s.max():.4f}")
     # =========================================================================
 
-    # 4. Save the file
+    # 4. Save full results file
     path_output = cfg.FILES['output']['h3_final']
     utils.save_parquet(df_calculated, path_output)
+    logging.info(f"Full results saved: {path_output.name}")
+
+    # 5. Save slim dashboard file (only columns needed by Streamlit — small enough to commit to GitHub)
+    dashboard_cols = [cfg.COL_ID_H3] + [
+        c for c in ['nm_mun', 'nm_uf', 'sigla_uf', 'cd_mun', 'iic_final']
+        if c in df_calculated.columns
+    ]
+    path_dashboard = cfg.FILES['output']['h3_dashboard']
+    df_calculated[dashboard_cols].to_parquet(path_dashboard, index=False, compression='gzip')
+    logging.info(f"Dashboard parquet saved: {path_dashboard.name}  ({path_dashboard.stat().st_size / 1e6:.1f} MB)")
+
     logging.info("Process completed successfully!")
 
 def run():

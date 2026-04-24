@@ -49,9 +49,8 @@ st.markdown("Análise intramunicipal através de hexágonos H3 (resolução 9)."
 # ==============================================================================
 @st.cache_data
 def load_data():
-    path = cfg.FILES['output']['h3_final']
-    cols = ['h3_id', 'nm_mun', 'nm_uf', 'iic_final']
-    df = pd.read_parquet(path, columns=cols)
+    path = cfg.FILES['output']['h3_dashboard']
+    df = pd.read_parquet(path)
     return df
 
 with st.spinner("Carregando base de dados..."):

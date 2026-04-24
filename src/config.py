@@ -91,9 +91,12 @@ FILES_H3   = {k: CLEAN_DIR / f"{FILE_PREFIX}_{k}_{v['name']}.parquet" for k, v i
 
 FILES_H3["base_metadata"] = BASE_H3_DIR
 
+FILE_DASHBOARD = f"br_h3_res9_iic_{_formatted_version}_dashboard.parquet"
+
 FILES = {
     "h3": FILES_H3,
     "output": {
-        "h3_final": RESULTS_DIR / FILE_FINAL_INDEX
+        "h3_final":     RESULTS_DIR / FILE_FINAL_INDEX,
+        "h3_dashboard": RESULTS_DIR / FILE_DASHBOARD,
     }
 }
