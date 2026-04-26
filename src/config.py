@@ -91,12 +91,19 @@ FILES_H3   = {k: CLEAN_DIR / f"{FILE_PREFIX}_{k}_{v['name']}.parquet" for k, v i
 
 FILES_H3["base_metadata"] = BASE_H3_DIR
 
-FILE_DASHBOARD = f"br_h3_res9_iic_{_formatted_version}_dashboard.parquet"
+# Dashboard parquet always lives in the repo root's data/ folder,
+# regardless of config.local.json, so it can be committed to GitHub.
+REPO_RESULTS_DIR = BASE_DIR / "data" / "outputs" / "results"
+REPO_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Prefixes used by pipeline to generate timestamped filenames
+IIC_FILE_PREFIX       = f"{FILE_PREFIX}_iic_{_formatted_version}"
+DASHBOARD_FILE_PREFIX = f"{FILE_PREFIX}_iic_{_formatted_version}_dashboard"
 
 FILES = {
     "h3": FILES_H3,
     "output": {
-        "h3_final":     RESULTS_DIR / FILE_FINAL_INDEX,
-        "h3_dashboard": RESULTS_DIR / FILE_DASHBOARD,
+        "results_dir":      RESULTS_DIR,
+        "repo_results_dir": REPO_RESULTS_DIR,
     }
 }

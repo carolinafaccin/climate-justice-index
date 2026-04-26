@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import logging
 from . import config as cfg
+from . import utils
 
 
 def _nanmean_cols(df: pd.DataFrame, cols: list) -> pd.Series:
@@ -33,6 +34,10 @@ def calculate_simple_iic(df: pd.DataFrame) -> pd.DataFrame:
         abbr = dim_meta['abbr'].lower()   # "ip", "iv", "ie", "ig"
         dim_avg = _nanmean_cols(df, existing)
 
+        # Normalize each dimension to [0,1] with winsorization so all dimensions
+        # have the same effective weight in the final IIC regardless of their natural spread
+        dim_avg = utils.normalize_minmax(dim_avg, winsorize=True)
+
         if dim_meta['invert']:
             dim_avg = 1.0 - dim_avg
 
@@ -40,7 +45,7 @@ def calculate_simple_iic(df: pd.DataFrame) -> pd.DataFrame:
         dim_cols.append(abbr)
         logging.info(f"Dimensão '{dim_name}' → {dim_meta['abbr']} calculada (invertida={dim_meta['invert']}).")
 
-    # 2. IIC final: média simples dos índices de dimensão
+    # 2. IIC final: média simples dos índices de dimensão (já em [0,1] — sem renormalizar)
     df['iic_final'] = _nanmean_cols(df, dim_cols)
 
     return df

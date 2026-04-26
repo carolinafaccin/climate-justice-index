@@ -66,11 +66,12 @@
         "v1": {
           "name": "renda",
           "abbr": "ren",
-          "description": "Percentual de domicílios com renda do responsável até meio salário-mínimo",
+          "description": "Rendimento nominal médio mensal dos responsáveis por domicílio (invertido: menor renda = maior vulnerabilidade)",
           "source": {
             "source_dir": "ibge/censo/2022/agregados_por_setores/t0",
             "num_cols": ["v06004_v06001"],
-            "den_cols": ["v06001"]
+            "den_cols": ["v06001"],
+            "invert_norm": true
           }
         },
         "v2": {

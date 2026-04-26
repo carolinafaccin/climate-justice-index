@@ -1,6 +1,7 @@
 import pandas as pd
 import logging
 from pathlib import Path
+from datetime import datetime
 
 # Internal imports
 from . import config as cfg
@@ -68,7 +69,18 @@ def consolidate_inputs(files_dict: dict, join_key: str) -> pd.DataFrame:
         if actual_column_name in df_temp.columns:
             # Select only the ID and the data column, renaming it to the indicator_key (e1, v1...)
             df_temp = df_temp[[join_key, actual_column_name]].rename(columns={actual_column_name: indicator_key})
-            
+
+            # Deduplicate by h3_id before merging to prevent row fan-out.
+            # Some source files retain duplicate h3_ids from the (h3_id, cd_setor) base;
+            # each join with such a file doubles those rows exponentially.
+            n_before = len(df_temp)
+            df_temp = df_temp.groupby(join_key, as_index=False)[indicator_key].mean()
+            if len(df_temp) < n_before:
+                logging.warning(
+                    f"  [{indicator_key}] Deduplicated {n_before - len(df_temp):,} rows "
+                    f"before merge ({n_before:,} → {len(df_temp):,} unique h3_ids)."
+                )
+
             # Merge left: keep all H3 from the base and bring the data if it exists
             df_master = pd.merge(df_master, df_temp, on=join_key, how='left')
             
@@ -111,17 +123,18 @@ def run_h3():
         logging.info(f"  {col}: n={len(s):,}  mean={s.mean():.4f}  std={s.std():.4f}  min={s.min():.4f}  max={s.max():.4f}")
     # =========================================================================
 
-    # 4. Save full results file
-    path_output = cfg.FILES['output']['h3_final']
+    # 4. Save full results file (timestamped — never overwrites previous runs)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path_output = cfg.FILES['output']['results_dir'] / f"{cfg.IIC_FILE_PREFIX}_{ts}.parquet"
     utils.save_parquet(df_calculated, path_output)
     logging.info(f"Full results saved: {path_output.name}")
 
-    # 5. Save slim dashboard file (only columns needed by Streamlit — small enough to commit to GitHub)
+    # 5. Save slim dashboard file (timestamped, in repo folder for GitHub commit)
     dashboard_cols = [cfg.COL_ID_H3] + [
-        c for c in ['nm_mun', 'nm_uf', 'sigla_uf', 'cd_mun', 'iic_final']
+        c for c in ['nm_mun', 'nm_uf', 'sigla_uf', 'cd_mun', 'iic_final', 'ip', 'iv', 'ie', 'ig']
         if c in df_calculated.columns
     ]
-    path_dashboard = cfg.FILES['output']['h3_dashboard']
+    path_dashboard = cfg.FILES['output']['repo_results_dir'] / f"{cfg.DASHBOARD_FILE_PREFIX}_{ts}.parquet"
     df_calculated[dashboard_cols].to_parquet(path_dashboard, index=False, compression='gzip')
     logging.info(f"Dashboard parquet saved: {path_dashboard.name}  ({path_dashboard.stat().st_size / 1e6:.1f} MB)")
 

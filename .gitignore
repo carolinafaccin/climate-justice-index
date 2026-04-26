@@ -212,3 +212,8 @@ __marimo__/
 __pycache__/
 config.local.json
 logs/
+.streamlit/secrets.toml
+
+# Parquets gerados pelo pipeline (muito grandes para o GitHub)
+# Para o Streamlit Cloud, commitar manualmente apenas o dashboard desejado
+data/outputs/results/*.parquet
