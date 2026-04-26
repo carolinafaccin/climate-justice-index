@@ -22,7 +22,8 @@ CENSUS_LOGIC = {
     if "source" in v and "source_dir" in v["source"]
 }
 
-# Collect all raw variable names referenced; v06004_v06001 is computed, add its raw parts
+# Collect all raw variable names referenced directly from indicators.json
+# v06004_v06001 is a computed column (product), not present in CSVs — exclude it and include v06004 instead
 _all_refs = {col for logic in CENSUS_LOGIC.values() for col in logic["num_cols"] + logic["den_cols"]}
 REQUIRED_RAW_VARS = sorted((_all_refs - {"v06004_v06001"}) | {"v06004"})
 
@@ -60,19 +61,19 @@ for f in all_csvs:
         if vars_to_extract:
             df_temp = df_temp[['cd_setor'] + vars_to_extract]
             df_censo = pd.merge(df_censo, df_temp, on='cd_setor', how='outer')
-            print(f"  ✅ Integrated: {f.name} ({len(vars_to_extract)} new variables)")
+            print(f"  OK: {f.name} ({len(vars_to_extract)} new variables)")
                 
     except Exception as e:
-        print(f"  ❌ Error reading {f.name}: {e}")
+        print(f"  ERRO: {f.name}: {e}")
 
-# Prepara Volume de Renda
-if 'v06004' in df_censo.columns and 'v06001' in df_censo.columns:
-    # Converte para numérico antes da conta
+# v06004 usa vírgula como separador decimal no arquivo do IBGE — converte antes do merge
+# v06004_v06001 = produto usado no numerador da média ponderada de renda: Σ(renda×responsáveis×peso)/Σ(responsáveis×peso)
+if 'v06004' in df_censo.columns:
     df_censo['v06004'] = pd.to_numeric(df_censo['v06004'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
-    df_censo['v06001'] = pd.to_numeric(df_censo['v06001'], errors='coerce').fillna(0)
-    df_censo['v06004_v06001'] = df_censo['v06004'] * df_censo['v06001']
+    if 'v06001' in df_censo.columns:
+        df_censo['v06004_v06001'] = df_censo['v06004'] * df_censo['v06001']
 
-print(f"✅ Consolidation completed! Master shape: {df_censo.shape}")
+print(f"Consolidation completed! Master shape: {df_censo.shape}")
 
 # ==============================================================================
 # 5. MERGE AND DASYMETRIC WEIGHTING
@@ -117,15 +118,17 @@ for ind_key, logic in CENSUS_LOGIC.items():
         abs_val = num / den
         abs_val = abs_val.replace([np.inf, -np.inf], 0).fillna(0)
     
-    # Normalização
+    # Normalização (com inversão opcional para indicadores onde alto = menos vulnerável)
     norm_val = utils.normalize_minmax(abs_val, winsorize=True)
+    if logic.get("invert_norm", False):
+        norm_val = 1.0 - norm_val
 
     df_export = pd.DataFrame({'h3_id': df_hex['h3_id'], col_abs: abs_val, col_norm: norm_val})
     
     out_path = cfg.FILES_H3[ind_key]
     utils.save_parquet(df_export, out_path)
     generated_files[ind_key] = (out_path.name, df_export, col_abs, col_norm)
-    print(f"  ✓ Saved: {ind_key.upper()}")
+    print(f"  Saved: {ind_key.upper()}")
 
 # ==============================================================================
 # 7. EXPORT DIAGNOSTIC LOG (.txt)
@@ -155,4 +158,4 @@ with open(DIAGNOSTIC_TXT, 'w', encoding='utf-8') as f:
         f.write(f"  > Mean: {df_diag[col_norm].mean():.4f}\n")
         f.write("-" * 50 + "\n")
 
-print(f"\n✅ Census ETL Pipeline completed! Diagnostic saved at: {DIAGNOSTIC_TXT}")
+print(f"\nCensus ETL Pipeline completed! Diagnostic saved at: {DIAGNOSTIC_TXT}")
