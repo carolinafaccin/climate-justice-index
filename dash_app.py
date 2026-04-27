@@ -7,7 +7,6 @@ import plotly.graph_objects as go
 import pandas as pd
 import geopandas as gpd
 import folium
-import leafmap.foliumap as leafmap
 import branca.colormap as branca_cm
 from branca.element import MacroElement
 from jinja2 import Template
@@ -36,7 +35,16 @@ def find_latest_dashboard():
         "  → Local:  execute `python run.py`"
     )
 
-df_brasil = pd.read_parquet(find_latest_dashboard())
+def _optimize_dtypes(df: pd.DataFrame) -> pd.DataFrame:
+    """Converte float64 → float32 e strings repetitivas → category para economizar RAM."""
+    for col in df.select_dtypes(include=['float64']).columns:
+        df[col] = df[col].astype('float32')
+    for col in df.select_dtypes(include=['object']).columns:
+        if df[col].nunique() < 100_000:
+            df[col] = df[col].astype('category')
+    return df
+
+df_brasil = _optimize_dtypes(pd.read_parquet(find_latest_dashboard()))
 
 DIM_COLS = {
     'ip': 'Grupos Prioritários',
@@ -295,7 +303,13 @@ def update_dashboard(gerar_clicks, home_clicks, uf, mun):
     df_city = df_city.dropna(subset=['geometry'])
     gdf_city = gpd.GeoDataFrame(df_city, geometry='geometry', crs="EPSG:4326")
 
-    m = leafmap.Map(draw_control=False, measure_control=False, google_map="HYBRID")
+    bounds = gdf_city.total_bounds  # [minx, miny, maxx, maxy]
+    center = [(bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2]
+    m = folium.Map(location=center, zoom_start=12, tiles=None)
+    folium.TileLayer(
+        tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+        attr='Google', name='Google Hybrid', max_zoom=20,
+    ).add_to(m)
 
     colormap = branca_cm.StepColormap(
         colors=COLORMAP_COLORS,
@@ -335,7 +349,7 @@ def update_dashboard(gerar_clicks, home_clicks, uf, mun):
         name="Injustiça Climática",
     ).add_to(m)
 
-    m.zoom_to_gdf(gdf_city)
+    m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
     map_html = m._repr_html_()
 
     # --- Métricas ---

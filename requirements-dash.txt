@@ -1,14 +1,12 @@
 dash
 plotly
 pandas
+numpy
 geopandas
 shapely
 h3
 pyarrow
 folium
-leafmap
 branca
 jinja2
-mapclassify
-xyzservices
 gunicorn
