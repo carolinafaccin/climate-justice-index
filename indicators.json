@@ -39,20 +39,20 @@
         "p4": {
           "name": "idosos",
           "abbr": "ido",
-          "description": "Percentual de pessoas acima de 60 anos",
+          "description": "Percentual de pessoas com 60 anos ou mais em domicílios com renda do responsável até 1 salário mínimo (R$ 1.212, referência 2022) — aproximado pela ponderação do setor censitário: peso = min(1, 1212/renda_média)",
           "source": {
             "source_dir": "ibge/censo/2022/agregados_por_setores/t0",
-            "num_cols": ["v01040", "v01041"],
+            "num_cols": ["v01040_ren", "v01041_ren"],
             "den_cols": ["v01006"]
           }
         },
         "p5": {
           "name": "criancas",
           "abbr": "cri",
-          "description": "Percentual de pessoas abaixo dos 14 anos",
+          "description": "Percentual de crianças de 0 a 9 anos em domicílios com renda do responsável até 1 salário mínimo (R$ 1.212, referência 2022) — aproximado pela ponderação do setor censitário: peso = min(1, 1212/renda_média)",
           "source": {
             "source_dir": "ibge/censo/2022/agregados_por_setores/t0",
-            "num_cols": ["v01031", "v01032", "v01033"],
+            "num_cols": ["v01031_ren", "v01032_ren"],
             "den_cols": ["v01006"]
           }
         }
@@ -66,22 +66,24 @@
         "v1": {
           "name": "renda",
           "abbr": "ren",
-          "description": "Rendimento nominal médio mensal dos responsáveis por domicílio (invertido: menor renda = maior vulnerabilidade)",
+          "description": "Renda média mensal do responsável pelo domicílio, limitada ao salário mínimo de 2022 (R$ 1.212) — setores com renda média acima do limiar recebem vulnerabilidade zero; abaixo, o gradiente reflete a defasagem em relação ao salário mínimo",
           "source": {
             "source_dir": "ibge/censo/2022/agregados_por_setores/t0",
             "num_cols": ["v06004_v06001"],
             "den_cols": ["v06001"],
+            "cap_abs": 1212,
             "invert_norm": true
           }
         },
         "v2": {
           "name": "moradia",
           "abbr": "mor",
-          "description": "Percentual de domicílios improvisados, sem banheiro, em casa de cômodos/cortiço ou com estrutura degradada",
+          "description": "Percentual de domicílios com ao menos uma condição de moradia inadequada: improvisados, cortiço/cômodos, habitação indígena sem paredes ou maloca, estrutura degradada, ou com saneamento insuficiente (banheiro coletivo, sanitário improvisado ou sem banheiro/sanitário)",
           "source": {
             "source_dir": "ibge/censo/2022/agregados_por_setores/t0",
-            "num_cols": ["v00002", "v00050", "v00052", "v00238"],
-            "den_cols": ["v00001"]
+            "num_cols": ["v00002", "v00050", "v00051", "v00052", "v00236", "v00237", "v00238"],
+            "den_cols": ["v00001"],
+            "or_logic": true
           }
         },
         "v3": {

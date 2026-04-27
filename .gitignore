@@ -211,6 +211,7 @@ __marimo__/
 # Others
 __pycache__/
 config.local.json
+etl/archive/
 logs/
 .streamlit/secrets.toml
 data/outputs/results/*.parquet

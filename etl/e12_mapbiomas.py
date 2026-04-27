@@ -17,6 +17,7 @@ from src import utils
 RASTER_LANDSLIDES = cfg.RAW_DIR / cfg.INDICATORS["e1"]["source"]["file"]
 RASTER_FLOODS     = cfg.RAW_DIR / cfg.INDICATORS["e2"]["source"]["file"]
 CNEFE_DIR         = cfg.RAW_DIR / cfg.INDICATORS["e1"]["source"]["cnefe_dir"]
+CACHE_DIR         = CNEFE_DIR
 
 H3_RES   = cfg.H3_RES
 CHUNK_SZ = 500_000
@@ -29,7 +30,7 @@ col_e1_abs  = col_e1_norm.replace("_norm", "_abs")
 col_e2_norm = cfg.COLUMN_MAP["e2"]
 col_e2_abs  = col_e2_norm.replace("_norm", "_abs")
 
-USECOLS = ['latitude', 'longitude', 'cod_especie', 'cod_indicador_finalidade_const']
+USECOLS = ['latitude', 'longitude', 'cod_especie']
 
 # Detect h3-py version once
 try:
@@ -56,18 +57,17 @@ def _read_cnefe_chunk(path):
     try:
         reader = pd.read_csv(
             path, sep=';', usecols=USECOLS,
-            dtype={'cod_especie': 'Int64', 'cod_indicador_finalidade_const': 'Int64'},
+            dtype={'cod_especie': 'Int64'},
             chunksize=CHUNK_SZ, low_memory=False
         )
     except Exception:
         reader = pd.read_csv(
             path, sep=';', usecols=USECOLS, encoding='latin1',
-            dtype={'cod_especie': 'Int64', 'cod_indicador_finalidade_const': 'Int64'},
+            dtype={'cod_especie': 'Int64'},
             chunksize=CHUNK_SZ, low_memory=False
         )
     for chunk in reader:
-        mask = (chunk['cod_especie'] == 1) & (chunk['cod_indicador_finalidade_const'] == 1)
-        df = chunk[mask].copy()
+        df = chunk[chunk['cod_especie'] == 1].copy()
         if df.empty:
             continue
         df['latitude']  = pd.to_numeric(df['latitude'],  errors='coerce')
@@ -86,6 +86,8 @@ def main():
     print("Fonte de domicílios: CNEFE 2022")
     print("=" * 60)
 
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
     csv_files = sorted(CNEFE_DIR.glob("*.csv"))
     if not csv_files:
         raise FileNotFoundError(f"Nenhum CSV encontrado em: {CNEFE_DIR}")
@@ -99,8 +101,16 @@ def main():
         nodata_f = src_f.nodata
 
         for csv_path in csv_files:
+            cache_path = CACHE_DIR / f"{csv_path.stem}.parquet"
+
+            if cache_path.exists():
+                print(f"  → {csv_path.name}  [cache]")
+                agg_parts.append(pd.read_parquet(cache_path))
+                continue
+
             print(f"  → {csv_path.name}", end="", flush=True)
             n_state = 0
+            state_parts = []
 
             for df in _read_cnefe_chunk(csv_path):
                 lats = df['latitude'].values
@@ -115,8 +125,13 @@ def main():
                     l_sum=('in_l', 'sum'),
                     f_sum=('in_f', 'sum')
                 )
-                agg_parts.append(part)
+                state_parts.append(part)
                 n_state += len(df)
+
+            if state_parts:
+                state_agg = pd.concat(state_parts).groupby('h3_id').sum()
+                state_agg.to_parquet(cache_path)
+                agg_parts.append(state_agg)
 
             total_dom += n_state
             print(f"  {n_state:,} domicílios")
@@ -129,8 +144,10 @@ def main():
 
     df_agg[col_e1_abs] = df_agg['l_sum'] / df_agg['total']
     df_agg[col_e2_abs] = df_agg['f_sum'] / df_agg['total']
-    df_agg[col_e1_norm] = utils.normalize_minmax(df_agg[col_e1_abs], winsorize=True)
-    df_agg[col_e2_norm] = utils.normalize_minmax(df_agg[col_e2_abs], winsorize=True)
+    # Proporções já limitadas em [0,1]: winsorize=False evita colapso em indicadores
+    # esparsos onde P99 cai em 0 (ex: deslizamentos afetam < 1% dos hexágonos)
+    df_agg[col_e1_norm] = utils.normalize_minmax(df_agg[col_e1_abs], winsorize=False)
+    df_agg[col_e2_norm] = utils.normalize_minmax(df_agg[col_e2_abs], winsorize=False)
 
     # Merge with H3 base and save
     print("Mesclando com malha H3 base...")

@@ -22,10 +22,20 @@ CENSUS_LOGIC = {
     if "source" in v and "source_dir" in v["source"]
 }
 
+# Columns computed in Section 4 from raw census data × income weight (peso_renda = min(1, 1212/v06004))
+# Maps computed column name → source demographic column
+INCOME_WEIGHTED_SRC = {
+    "v01040_ren": "v01040",
+    "v01041_ren": "v01041",
+    "v01031_ren": "v01031",
+    "v01032_ren": "v01032",
+}
+
 # Collect all raw variable names referenced directly from indicators.json
-# v06004_v06001 is a computed column (product), not present in CSVs — exclude it and include v06004 instead
+# Exclude computed columns (v06004_v06001, v*_ren); add their raw sources instead
 _all_refs = {col for logic in CENSUS_LOGIC.values() for col in logic["num_cols"] + logic["den_cols"]}
-REQUIRED_RAW_VARS = sorted((_all_refs - {"v06004_v06001"}) | {"v06004"})
+COMPUTED_COLS = {"v06004_v06001"} | set(INCOME_WEIGHTED_SRC.keys())
+REQUIRED_RAW_VARS = sorted((_all_refs - COMPUTED_COLS) | {"v06004"} | set(INCOME_WEIGHTED_SRC.values()))
 
 # ==============================================================================
 # 3. PATHS — source_dir read from first census source entry in indicators.json
@@ -72,6 +82,12 @@ if 'v06004' in df_censo.columns:
     df_censo['v06004'] = pd.to_numeric(df_censo['v06004'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
     if 'v06001' in df_censo.columns:
         df_censo['v06004_v06001'] = df_censo['v06004'] * df_censo['v06001']
+    # peso_renda: setores com renda média <= 1212 têm peso 1.0; acima, o peso é inversamente proporcional.
+    # Setores sem renda registrada (v06004=0) recebem peso 1.0 (máxima vulnerabilidade).
+    peso_renda = np.where(df_censo['v06004'] > 0, np.minimum(1.0, 1212.0 / df_censo['v06004']), 1.0)
+    for dst, src in INCOME_WEIGHTED_SRC.items():
+        if src in df_censo.columns:
+            df_censo[dst] = pd.to_numeric(df_censo[src], errors='coerce').fillna(0) * peso_renda
 
 print(f"Consolidation completed! Master shape: {df_censo.shape}")
 
@@ -86,8 +102,9 @@ df_h3['cd_setor'] = df_h3['cd_setor'].astype(str)
 
 df_merged = pd.merge(df_h3[['h3_id', 'cd_setor', 'peso_dom']], df_censo, on='cd_setor', how='inner')
 
-# Identifica todas as colunas numéricas que precisam de peso
-columns_to_weight = [c for c in df_merged.columns if c in REQUIRED_RAW_VARS or c == 'v06004_v06001']
+# Identifica todas as colunas numéricas que precisam de peso (raw + computed)
+_computed = {"v06004_v06001"} | set(INCOME_WEIGHTED_SRC.keys())
+columns_to_weight = [c for c in df_merged.columns if c in REQUIRED_RAW_VARS or c in _computed]
 
 for col in columns_to_weight:
     df_merged[col] = pd.to_numeric(df_merged[col], errors='coerce').fillna(0)
@@ -112,12 +129,19 @@ for ind_key, logic in CENSUS_LOGIC.items():
     # Razão
     num = df_hex[[c for c in logic['num_cols'] if c in df_hex.columns]].sum(axis=1)
     den = df_hex[[c for c in logic['den_cols'] if c in df_hex.columns]].sum(axis=1)
-    
-# BLINDAGEM: Trata divisão por zero e limita o teto em 1.0 (100%)
+
+    # OR logic: cap numerator at denominator to avoid double-counting overlapping categories
+    if logic.get("or_logic", False):
+        num = np.minimum(num, den)
+
     with np.errstate(divide='ignore', invalid='ignore'):
         abs_val = num / den
         abs_val = abs_val.replace([np.inf, -np.inf], 0).fillna(0)
-    
+
+    # Apply upper cap before normalisation (e.g. income threshold)
+    if logic.get("cap_abs"):
+        abs_val = abs_val.clip(upper=float(logic["cap_abs"]))
+
     # Normalização (com inversão opcional para indicadores onde alto = menos vulnerável)
     norm_val = utils.normalize_minmax(abs_val, winsorize=True)
     if logic.get("invert_norm", False):
