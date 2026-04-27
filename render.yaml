@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: iic-dashboard
+    runtime: python
+    buildCommand: pip install -r requirements-dash.txt
+    startCommand: gunicorn dash_app:server --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    envVars:
+      - key: DASH_PASSWORD
+        sync: false
+    plan: free
