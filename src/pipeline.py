@@ -134,8 +134,20 @@ def run_h3():
         c for c in ['nm_mun', 'nm_uf', 'sigla_uf', 'cd_mun', 'iic_final', 'ip', 'iv', 'ie', 'ig']
         if c in df_calculated.columns
     ]
+    df_slim = df_calculated[dashboard_cols].copy()
+
+    # float32 (vs float64) halves numeric column size without affecting dashboard precision
+    for col in ['iic_final', 'ip', 'iv', 'ie', 'ig']:
+        if col in df_slim.columns:
+            df_slim[col] = df_slim[col].astype('float32')
+
+    # category dtype → parquet dictionary-encodes low-cardinality string columns
+    for col in ['nm_uf', 'sigla_uf', 'nm_mun', 'cd_mun']:
+        if col in df_slim.columns:
+            df_slim[col] = df_slim[col].astype('category')
+
     path_dashboard = cfg.FILES['output']['repo_results_dir'] / f"{cfg.DASHBOARD_FILE_PREFIX}_{ts}.parquet"
-    df_calculated[dashboard_cols].to_parquet(path_dashboard, index=False, compression='gzip')
+    df_slim.to_parquet(path_dashboard, index=False, compression='gzip')
     logging.info(f"Dashboard parquet saved: {path_dashboard.name}  ({path_dashboard.stat().st_size / 1e6:.1f} MB)")
 
     logging.info("Process completed successfully!")

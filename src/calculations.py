@@ -34,10 +34,6 @@ def calculate_simple_iic(df: pd.DataFrame) -> pd.DataFrame:
         abbr = dim_meta['abbr'].lower()   # "ip", "iv", "ie", "ig"
         dim_avg = _nanmean_cols(df, existing)
 
-        # Normalize each dimension to [0,1] with winsorization so all dimensions
-        # have the same effective weight in the final IIC regardless of their natural spread
-        dim_avg = utils.normalize_minmax(dim_avg, winsorize=True)
-
         if dim_meta['invert']:
             dim_avg = 1.0 - dim_avg
 
