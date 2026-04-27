@@ -208,11 +208,16 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# Others
-__pycache__/
+# Config files
 config.local.json
+data/outputs/results/*.parquet
+run_pipeline.bat
+
+# Folders
+__pycache__/
 etl/archive/
 logs/
-.streamlit/secrets.toml
-data/outputs/results/*.parquet
 .streamlit/
+.render/
+diagnose/champ/
+diagnose/ 
