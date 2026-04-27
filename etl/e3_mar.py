@@ -70,8 +70,8 @@ def main():
     # and this formula still holds correctly without any changes.
     df_all[col_e3_abs] = df_all["qtd_dom"] * df_all["risco_slr"]
 
-    # e3_norm: min-max with winsorization across all Brazil
-    df_all[col_e3_norm] = utils.normalize_minmax(df_all[col_e3_abs], winsorize=True)
+    # winsorize=False: indicador costeiro (<1% dos hexágonos), P99=0 colapsaria a normalização
+    df_all[col_e3_norm] = utils.normalize_minmax(df_all[col_e3_abs], winsorize=False)
 
     n_risk = (df_all["risco_slr"] > 0).sum()
     print(f"   Hexágonos com risco > 0: {n_risk:,}")
