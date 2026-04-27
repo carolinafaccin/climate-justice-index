@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import dash
 from dash import dcc, html, Input, Output, State, no_update
 import plotly.express as px
@@ -32,7 +33,7 @@ def find_latest_dashboard():
     raise FileNotFoundError(
         "Nenhum parquet de dashboard encontrado.\n"
         "  → Deploy: copie o parquet aprovado para data/outputs/release/\n"
-        "  → Local:  execute `python main.py`"
+        "  → Local:  execute `python run.py`"
     )
 
 df_brasil = pd.read_parquet(find_latest_dashboard())
@@ -45,9 +46,75 @@ DIM_COLS = {
 }
 PLOT_TPL = "plotly_white"
 COLORMAP_COLORS = ["#236915", "#54ad42", "#e9dd99", "#e6b274", "#e96767"]
-COLORMAP_INDEX = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+COLORMAP_INDEX  = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+
+# Cores WRI Brasil
+WRI_YELLOW  = "#F0AB00"   # primária — destaque de dados
+WRI_GREEN   = "#32864B"   # secundária — botões de ação
+FONT_FAMILY = "Arial, Helvetica, sans-serif"
 
 ufs = sorted(df_brasil['nm_uf'].dropna().unique())
+
+# Estatísticas nacionais pré-calculadas na inicialização
+_iic_vals            = df_brasil['iic_final'].dropna().values
+_hist_counts, _hist_edges = np.histogram(_iic_vals, bins=50, range=(0.0, 1.0))
+_hist_centers        = (_hist_edges[:-1] + _hist_edges[1:]) / 2
+_national_mean       = float(_iic_vals.mean())
+_n_hex               = len(df_brasil)
+_pct_alta            = float((_iic_vals >= 0.8).mean() * 100)
+
+
+def build_home_content():
+    """Constrói a visão geral nacional exibida na página inicial."""
+    fig = go.Figure(go.Bar(
+        x=_hist_centers,
+        y=_hist_counts,
+        width=float(_hist_edges[1] - _hist_edges[0]),
+        marker_color=WRI_GREEN,
+        marker_line_width=0,
+    ))
+    fig.add_vline(
+        x=_national_mean, line_dash='solid', line_color=WRI_YELLOW, line_width=2,
+        annotation=dict(
+            text=f'Média Brasil ({_national_mean:.3f})',
+            yref='paper', y=0.98,
+            font=dict(color=WRI_YELLOW, family=FONT_FAMILY, size=11),
+            showarrow=False,
+            xanchor='left',
+        ),
+    )
+    fig.update_layout(
+        xaxis_title='Índice de Injustiça Climática',
+        yaxis_title='Número de hexágonos',
+        template=PLOT_TPL, showlegend=False,
+        margin=dict(t=20, b=10),
+        font=dict(family=FONT_FAMILY),
+    )
+
+    def stat_box(label, value):
+        return html.Div([
+            html.Div(label, style={'fontSize': '12px', 'color': '#666', 'marginBottom': '4px'}),
+            html.Div(value, style={'fontSize': '20px', 'fontWeight': '700', 'color': '#111'}),
+        ], style={
+            'flex': '1', 'padding': '14px', 'backgroundColor': '#f8f9fa',
+            'borderRadius': '6px', 'border': '1px solid #dee2e6',
+            'textAlign': 'center', 'minWidth': '130px',
+        })
+
+    return html.Div([
+        html.H3("Panorama Nacional", style={'marginBottom': '16px', 'fontWeight': '700'}),
+        html.Div([
+            stat_box("Hexágonos", f"{_n_hex:,}".replace(',', '.')),
+            stat_box("IIC médio", f"{_national_mean:.3f}"),
+            stat_box("IIC alto (> 0,8)", f"{_pct_alta:.1f}%"),
+        ], style={'display': 'flex', 'gap': '12px', 'marginBottom': '24px', 'flexWrap': 'wrap'}),
+        html.H4("Distribuição nacional do Índice de Injustiça Climática",
+                style={'marginBottom': '4px', 'fontWeight': '700', 'fontSize': '16px'}),
+        html.P("Frequência de hexágonos por faixa de injustiça climática em todo o Brasil.",
+               style={'color': '#666', 'fontSize': '13px', 'marginTop': '0', 'marginBottom': '8px'}),
+        dcc.Graph(figure=fig, style={'height': '320px'}),
+    ])
+
 
 # --- App ---
 app = dash.Dash(__name__, title="Índice de Injustiça Climática")
@@ -59,7 +126,7 @@ app.layout = html.Div([
     # Tela de login
     html.Div(id='login-screen', style={
         'display': 'flex', 'justifyContent': 'center', 'alignItems': 'center',
-        'height': '100vh', 'fontFamily': 'Arial, sans-serif', 'backgroundColor': '#f8f9fa',
+        'height': '100vh', 'fontFamily': FONT_FAMILY, 'backgroundColor': '#f8f9fa',
     }, children=[
         html.Div([
             html.H2("Índice de Injustiça Climática",
@@ -68,13 +135,13 @@ app.layout = html.Div([
                 id='senha-input', type='password', placeholder='Digite a senha...',
                 debounce=True,
                 style={
-                    'width': '100%', 'padding': '10px', 'fontSize': '16px',
+                    'width': '100%', 'padding': '10px', 'fontSize': '14px',
                     'borderRadius': '4px', 'border': '1px solid #ccc', 'boxSizing': 'border-box',
                 },
             ),
-            html.Div(id='senha-erro', style={'color': '#b91c1c', 'marginTop': '8px', 'fontSize': '14px'}),
+            html.Div(id='senha-erro', style={'color': '#b91c1c', 'marginTop': '8px', 'fontSize': '13px'}),
         ], style={
-            'width': '320px', 'padding': '40px',
+            'width': '420px', 'padding': '40px',
             'boxShadow': '0 2px 16px rgba(0,0,0,0.12)', 'borderRadius': '8px',
             'backgroundColor': '#fff',
         }),
@@ -86,33 +153,40 @@ app.layout = html.Div([
         # Barra lateral
         html.Div([
             html.H3("Selecione o município",
-                    style={'marginTop': '0', 'marginBottom': '16px', 'fontWeight': '700'}),
-            html.Label("Estado", style={'fontWeight': '700', 'marginBottom': '4px', 'display': 'block'}),
+                    style={'marginTop': '0', 'marginBottom': '14px', 'fontWeight': '700', 'fontSize': '15px'}),
+            html.Label("Estado", style={'fontWeight': '700', 'marginBottom': '4px', 'display': 'block', 'fontSize': '13px'}),
             dcc.Dropdown(
                 id='uf-dropdown',
                 options=[{'label': u, 'value': u} for u in ufs],
                 value=ufs[0], clearable=False,
-                style={'marginBottom': '16px'},
+                style={'marginBottom': '14px', 'fontSize': '13px'},
             ),
-            html.Label("Município", style={'fontWeight': '700', 'marginBottom': '4px', 'display': 'block'}),
-            dcc.Dropdown(id='mun-dropdown', options=[], value=None, clearable=False,
-                         style={'marginBottom': '24px'}),
+            html.Label("Município", style={'fontWeight': '700', 'marginBottom': '4px', 'display': 'block', 'fontSize': '13px'}),
+            dcc.Dropdown(
+                id='mun-dropdown', options=[], value=None, clearable=False,
+                style={'marginBottom': '20px', 'fontSize': '13px'},
+            ),
             html.Button("Gerar mapa", id='gerar-btn', n_clicks=0, style={
-                'width': '100%', 'padding': '10px', 'backgroundColor': '#1a6b3c',
+                'width': '100%', 'padding': '10px', 'backgroundColor': WRI_GREEN,
                 'color': 'white', 'border': 'none', 'borderRadius': '4px',
-                'fontSize': '15px', 'cursor': 'pointer', 'fontWeight': '700',
+                'fontSize': '14px', 'cursor': 'pointer', 'fontWeight': '700',
+            }),
+            html.Button("← Visão geral", id='home-btn', n_clicks=0, style={
+                'width': '100%', 'padding': '8px', 'backgroundColor': 'transparent',
+                'color': WRI_GREEN, 'border': f'1px solid {WRI_GREEN}', 'borderRadius': '4px',
+                'fontSize': '13px', 'cursor': 'pointer', 'marginTop': '8px',
             }),
         ], style={
             'position': 'fixed', 'top': '0', 'left': '0', 'width': '260px', 'height': '100vh',
             'backgroundColor': '#f8f9fa', 'padding': '24px 20px', 'boxSizing': 'border-box',
-            'borderRight': '1px solid #dee2e6', 'overflowY': 'auto', 'fontFamily': 'Arial, sans-serif',
+            'borderRight': '1px solid #dee2e6', 'overflowY': 'auto', 'fontFamily': FONT_FAMILY,
         }),
 
         # Área principal
         html.Div([
             html.H1(
                 "Índice de Injustiça Climática para municípios brasileiros",
-                style={'fontWeight': '700', 'fontFamily': 'Arial, sans-serif', 'marginBottom': '8px'},
+                style={'fontWeight': '700', 'fontFamily': FONT_FAMILY, 'marginBottom': '8px'},
             ),
             html.P(
                 "O Índice de Injustiça Climática (IIC) mensura desigualdades territoriais frente aos riscos "
@@ -120,24 +194,15 @@ app.layout = html.Div([
                 "de grupos populacionais prioritários e capacidade de gestão municipal. Desenvolvido pelo WRI "
                 "Brasil, o índice é calculado em grade hexagonal H3 de alta resolução (~0,1 km²) para todos os "
                 "municípios brasileiros.",
-                style={'fontFamily': 'Arial, sans-serif', 'color': '#444', 'marginBottom': '24px', 'maxWidth': '760px'},
+                style={'fontFamily': FONT_FAMILY, 'color': '#444', 'marginBottom': '24px', 'maxWidth': '760px'},
             ),
             dcc.Loading(
-                id='loading', type='circle', color='#1a6b3c',
-                children=html.Div(id='dashboard-content', children=[
-                    html.Div(
-                        "Selecione um município e clique em 'Gerar mapa' para visualizar.",
-                        style={
-                            'backgroundColor': '#FEF3C7', 'borderLeft': '4px solid #F0AB00',
-                            'padding': '12px 16px', 'borderRadius': '4px',
-                            'color': '#92680B', 'fontFamily': 'Arial, sans-serif',
-                        },
-                    ),
-                ]),
+                id='loading', type='circle', color=WRI_YELLOW,
+                children=html.Div(id='dashboard-content', children=build_home_content()),
             ),
         ], style={
             'marginLeft': '280px', 'padding': '32px 40px',
-            'fontFamily': 'Arial, sans-serif', 'minHeight': '100vh', 'boxSizing': 'border-box',
+            'fontFamily': FONT_FAMILY, 'minHeight': '100vh', 'boxSizing': 'border-box',
         }),
     ]),
 ], style={'margin': '0', 'padding': '0'})
@@ -169,7 +234,7 @@ def toggle_auth(authenticated):
     hidden = {'display': 'none'}
     login_visible = {
         'display': 'flex', 'justifyContent': 'center', 'alignItems': 'center',
-        'height': '100vh', 'fontFamily': 'Arial, sans-serif', 'backgroundColor': '#f8f9fa',
+        'height': '100vh', 'fontFamily': FONT_FAMILY, 'backgroundColor': '#f8f9fa',
     }
     if authenticated:
         return hidden, {'display': 'block'}
@@ -192,11 +257,17 @@ def update_municipios(uf):
 @app.callback(
     Output('dashboard-content', 'children'),
     Input('gerar-btn', 'n_clicks'),
+    Input('home-btn', 'n_clicks'),
     State('uf-dropdown', 'value'),
     State('mun-dropdown', 'value'),
     prevent_initial_call=True,
 )
-def update_dashboard(n_clicks, uf, mun):
+def update_dashboard(gerar_clicks, home_clicks, uf, mun):
+    triggered = dash.callback_context.triggered[0]['prop_id']
+
+    if 'home-btn' in triggered:
+        return build_home_content()
+
     if not uf or not mun:
         return no_update
 
@@ -206,11 +277,11 @@ def update_dashboard(n_clicks, uf, mun):
 
     if df_city.empty:
         return html.Div("Nenhum dado encontrado para essa seleção.",
-                        style={'color': '#b91c1c', 'fontFamily': 'Arial, sans-serif'})
+                        style={'color': '#b91c1c', 'fontFamily': FONT_FAMILY})
 
-    city_mean = df_city['iic_final'].mean()
+    city_mean    = df_city['iic_final'].mean()
     national_pct = (df_brasil['iic_final'] < city_mean).mean() * 100
-    brazil_mean = df_brasil['iic_final'].mean()
+    brazil_mean  = _national_mean
 
     # --- Mapa ---
     def get_geometry(h3_id):
@@ -286,40 +357,56 @@ def update_dashboard(n_clicks, uf, mun):
     ], style={'display': 'flex', 'gap': '16px', 'marginTop': '16px', 'flexWrap': 'wrap'})
 
     # --- Histograma ---
+    # Posiciona as anotações em alturas distintas para evitar sobreposição
+    city_anchor   = 'right' if city_mean > 0.6 else 'left'
+    brazil_anchor = 'right' if brazil_mean > 0.6 else 'left'
+
     fig_hist = px.histogram(
         df_city, x='iic_final', nbins=40, range_x=[0, 1],
-        labels={'iic_final': 'IIC', 'count': 'Hexágonos'},
+        labels={'iic_final': 'Índice de Injustiça Climática', 'count': 'Hexágonos'},
         template=PLOT_TPL, color_discrete_sequence=['#fde68a'],
     )
     fig_hist.update_traces(marker_line_width=0)
     fig_hist.add_vline(
-        x=city_mean, line_dash='solid', line_color='#c47f00', line_width=2,
-        annotation_text=f'Média {mun} ({city_mean:.3f})', annotation_position='top left',
+        x=city_mean, line_dash='solid', line_color=WRI_YELLOW, line_width=2,
+        annotation=dict(
+            text=f'Média {mun} ({city_mean:.3f})',
+            yref='paper', y=0.98,
+            font=dict(color=WRI_YELLOW, family=FONT_FAMILY, size=11),
+            showarrow=False, xanchor=city_anchor,
+        ),
     )
     fig_hist.add_vline(
-        x=brazil_mean, line_dash='dash', line_color='gray', line_width=1.5,
-        annotation_text=f'Média Brasil ({brazil_mean:.3f})', annotation_position='top right',
+        x=brazil_mean, line_dash='dash', line_color='#888', line_width=1.5,
+        annotation=dict(
+            text=f'Média Brasil ({brazil_mean:.3f})',
+            yref='paper', y=0.82,
+            font=dict(color='#888', family=FONT_FAMILY, size=11),
+            showarrow=False, xanchor=brazil_anchor,
+        ),
     )
     fig_hist.update_layout(
-        xaxis_title='IIC', yaxis_title='Número de hexágonos',
+        xaxis_title='Índice de Injustiça Climática',
+        yaxis_title='Número de hexágonos',
         showlegend=False, margin=dict(t=30, b=10),
+        font=dict(family=FONT_FAMILY),
     )
 
     # --- Radar ---
-    avail_dims = {k: v for k, v in DIM_COLS.items()
-                  if k in df_city.columns and k in df_brasil.columns}
-    labels = list(avail_dims.values())
-    city_vals = [df_city[k].mean() for k in avail_dims]
+    avail_dims  = {k: v for k, v in DIM_COLS.items()
+                   if k in df_city.columns and k in df_brasil.columns}
+    labels      = list(avail_dims.values())
+    city_vals   = [df_city[k].mean()  for k in avail_dims]
     brazil_vals = [df_brasil[k].mean() for k in avail_dims]
 
-    labels_c = labels + [labels[0]]
-    city_c = city_vals + [city_vals[0]]
-    brazil_c = brazil_vals + [brazil_vals[0]]
+    labels_c  = labels      + [labels[0]]
+    city_c    = city_vals   + [city_vals[0]]
+    brazil_c  = brazil_vals + [brazil_vals[0]]
 
     fig_radar = go.Figure()
     fig_radar.add_trace(go.Scatterpolar(
         r=city_c, theta=labels_c, fill='toself', name=mun,
-        line_color='#fcba03', fillcolor='rgba(252, 186, 3, 0.25)',
+        line_color=WRI_YELLOW, fillcolor='rgba(240, 171, 0, 0.25)',
     ))
     fig_radar.add_trace(go.Scatterpolar(
         r=brazil_c, theta=labels_c, fill='toself', name='Brasil',
@@ -330,7 +417,14 @@ def update_dashboard(n_clicks, uf, mun):
         template=PLOT_TPL, showlegend=True,
         legend=dict(orientation='h', yanchor='bottom', y=-0.15),
         margin=dict(t=30, b=60),
+        font=dict(family=FONT_FAMILY),
     )
+
+    def caption(text):
+        return html.P(text, style={
+            'color': '#666', 'fontSize': '12px', 'marginTop': '4px',
+            'fontStyle': 'italic', 'fontFamily': FONT_FAMILY,
+        })
 
     return dcc.Tabs([
         dcc.Tab(label='Mapa', children=[
@@ -343,16 +437,27 @@ def update_dashboard(n_clicks, uf, mun):
         dcc.Tab(label='Análise', children=[
             html.Div([
                 html.Div([
-                    html.H3("Distribuição do IIC", style={'marginBottom': '4px'}),
+                    html.H3("Distribuição do Índice de Injustiça Climática",
+                            style={'marginBottom': '4px'}),
                     html.P("Frequência dos hexágonos por faixa de injustiça climática.",
                            style={'color': '#666', 'fontSize': '13px', 'marginTop': '0'}),
                     dcc.Graph(figure=fig_hist),
+                    caption(
+                        "Hexágonos à direita do gráfico concentram as piores condições: "
+                        "maior exposição a riscos climáticos, maior vulnerabilidade socioeconômica "
+                        "e menor capacidade de resposta municipal."
+                    ),
                 ], style={'flex': '1', 'minWidth': '300px'}),
                 html.Div([
                     html.H3("Perfil por dimensão", style={'marginBottom': '4px'}),
                     html.P("Média do município vs. média nacional em cada dimensão do índice.",
                            style={'color': '#666', 'fontSize': '13px', 'marginTop': '0'}),
                     dcc.Graph(figure=fig_radar),
+                    caption(
+                        "Quanto mais próximo de 1,0 em cada eixo, maior a injustiça climática "
+                        "naquela dimensão. A dimensão Capacidade de Gestão já está invertida: "
+                        "menor capacidade municipal equivale a maior injustiça."
+                    ),
                 ], style={'flex': '1', 'minWidth': '300px'}),
             ], style={'display': 'flex', 'gap': '32px', 'flexWrap': 'wrap', 'marginTop': '16px'}),
         ]),
