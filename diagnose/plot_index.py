@@ -74,11 +74,11 @@ DIMS = {
         "color"     : "#C0392B",
         "indicators": ["p1", "p2", "p3", "p4", "p5"],
         "ind_labels": {
-            "p1": "p1 - Mulheres pretas/pardas chefes de domicilio",
-            "p2": "p2 - Populacao negra (pretas e pardas)",
-            "p3": "p3 - Indigenas e quilombolas",
-            "p4": "p4 - Idosos (60+ anos)",
-            "p5": "p5 - Criancas (< 14 anos)",
+            "p1": "p1 - Mulheres negras chefes de domicilio",
+            "p2": "p2 - População negra",
+            "p3": "p3 - Indígenas e quilombolas",
+            "p4": "p4 - Idosos (60 anos ou mais)",
+            "p5": "p5 - Crianças (14 anos ou menos)",
         },
     },
     "iv": {
@@ -86,11 +86,11 @@ DIMS = {
         "color"     : "#E67E22",
         "indicators": ["v1", "v2", "v3", "v4", "v5"],
         "ind_labels": {
-            "v1": "v1 - Renda (invertida: menor renda = maior vulnerabilidade)",
-            "v2": "v2 - Moradia precaria",
-            "v3": "v3 - Educacao",
-            "v4": "v4 - Acesso a saude",
-            "v5": "v5 - Infraestrutura basica",
+            "v1": "v1 - Baixa renda",
+            "v2": "v2 - Moradia precária",
+            "v3": "v3 - Educação",
+            "v4": "v4 - Acesso à saúde",
+            "v5": "v5 - Infraestrutura",
         },
     },
     "ie": {
@@ -98,9 +98,9 @@ DIMS = {
         "color"     : "#27AE60",
         "indicators": ["e1", "e2", "e3", "e4", "e5"],
         "ind_labels": {
-            "e1": "e1 - Deslizamentos",
-            "e2": "e2 - Inundacoes/alagamentos",
-            "e3": "e3 - Elevacao do nivel do mar",
+            "e1": "e1 - Deslizamentos de terra",
+            "e2": "e2 - Inundações, alagamentos e enxurradas",
+            "e3": "e3 - Elevação do nível do mar",
             "e4": "e4 - Calor extremo",
             "e5": "e5 - Queimadas",
         },
@@ -111,22 +111,22 @@ DIMS = {
         "indicators": ["g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8"],
         "ind_labels": {
             "g1": "g1 - Investimento ambiental",
-            "g2": "g2 - Plano de contingencia",
-            "g3": "g3 - Participacao NUPDEC",
+            "g2": "g2 - Plano de contingência",
+            "g3": "g3 - Participação em NUPDECs",
             "g4": "g4 - Conselhos municipais",
-            "g5": "g5 - Sistema de alerta",
-            "g6": "g6 - Mapeamento/zoneamento de risco",
+            "g5": "g5 - Sistemas de alerta",
+            "g6": "g6 - Mapeamento e zoneamento de risco",
             "g7": "g7 - Cadastro de familias em risco",
-            "g8": "g8 - Politicas de direitos humanos",
+            "g8": "g8 - Políticas de direitos humanos",
         },
     },
 }
 
 SUB_LABELS = {
-    "ip": "IP - Grupos Prioritarios",
+    "ip": "IP - Grupos Prioritários",
     "iv": "IV - Vulnerabilidade",
-    "ie": "IE - Exposicao",
-    "ig": "IG - Gestao Municipal (pre-inversao)",
+    "ie": "IE - Exposição",
+    "ig": "IG - Capacidade de Gestao Municipal",
 }
 
 ALL_INDICATORS = [
@@ -437,17 +437,17 @@ def _city_slug(nm_mun: str, nm_uf: str) -> str:
 
 
 def fig_map_city(nm_mun: str, nm_uf: str, gdf: gpd.GeoDataFrame) -> None:
-    """IIC final + 4 sub-indices em 5 classes de cor discretas."""
+    """IIC final + 4 sub-índices em 5 classes de cor discretas."""
     PLOTS = [
         ("iic_final", "IIC Final",
          _class_colors_from_cmap("RdYlGn_r")),
-        ("ip", "IP - Grupos Prioritarios",
+        ("ip", "IP - Grupos Prioritários",
          _class_colors_from_base(DIMS["ip"]["color"])),
         ("iv", "IV - Vulnerabilidade",
          _class_colors_from_base(DIMS["iv"]["color"])),
-        ("ie", "IE - Exposicao",
+        ("ie", "IE - Exposição",
          _class_colors_from_base(DIMS["ie"]["color"])),
-        ("ig", "IG - Gestao Municipal\n(pos-inversao no IIC)",
+        ("ig", "IG - Capacidade de Gestao Municipal",
          _class_colors_from_base(DIMS["ig"]["color"])),
     ]
 
@@ -467,7 +467,7 @@ def fig_map_city(nm_mun: str, nm_uf: str, gdf: gpd.GeoDataFrame) -> None:
 
     fig.suptitle(
         f"{nm_mun} / {nm_uf}\n"
-        f"Distribuicao Espacial H3 (res. 9) - IIC e Sub-indices",
+        f"Distribuicao Espacial H3 (res. 9) - IIC e Sub-índices",
         fontsize=14, fontweight="bold", y=1.01,
     )
     _save_map(fig, f"map_{_city_slug(nm_mun, nm_uf)}")
@@ -475,7 +475,7 @@ def fig_map_city(nm_mun: str, nm_uf: str, gdf: gpd.GeoDataFrame) -> None:
 
 def fig_map_city_indicators(nm_mun: str, nm_uf: str,
                              gdf: gpd.GeoDataFrame) -> None:
-    """Uma figura por dimensao com mapas de cada indicador individual."""
+    """Uma figura por dimensão com mapas de cada indicador individual."""
     for dim_key, meta in DIMS.items():
         indicators  = meta["indicators"]
         color       = meta["color"]
@@ -521,24 +521,24 @@ def fig_map_city_indicators(nm_mun: str, nm_uf: str,
 
 def main():
     print("=" * 60)
-    print(f"Diagnostico IIC v2.0  |  {RESULTS_FILE.name}")
+    print(f"Diagnóstico IIC v2.0  |  {RESULTS_FILE.name}")
     print(f"Timestamp: {FILE_TS}")
     print("=" * 60)
 
     df = load_sample(SAMPLE_N)
 
-    print("\n[1/5] Scatter por dimensao (indicadores vs sub-indice)...")
+    print("\n[1/5] Scatter por dimensão (indicadores vs sub-índice)...")
     for dim_key, meta in DIMS.items():
         print(f"  -> {dim_key.upper()}")
         fig_dimension(dim_key, meta, df)
 
-    print("\n[2/5] Sub-indices vs IIC final...")
+    print("\n[2/5] Sub-índices vs IIC final...")
     fig_subindices_vs_iic(df)
 
-    print("\n[3/5] Distribuicao do IIC final...")
+    print("\n[3/5] Distribuição do IIC final...")
     fig_iic_distribution(df)
 
-    print("\n[4/5] Matriz de dispersao entre sub-indices...")
+    print("\n[4/5] Matriz de dispersão entre sub-índices...")
     fig_subindices_matrix(df)
 
     print(f"\n[5/5] Mapas por cidade ({len(CITIES)} cidade(s) em config.json)...")
@@ -550,7 +550,7 @@ def main():
         if city_df.empty:
             print(f"  [AVISO] Nenhum dado para {nm_mun} / {nm_uf}")
             continue
-        print(f"  Convertendo {len(city_df):,} hexagonos para geometria ...")
+        print(f"  Convertendo {len(city_df):,} hexágonos para geometria ...")
         gdf = _build_gdf(city_df)
         fig_map_city(nm_mun, nm_uf, gdf)
         fig_map_city_indicators(nm_mun, nm_uf, gdf)
