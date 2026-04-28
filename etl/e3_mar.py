@@ -26,16 +26,16 @@ col_e3_abs  = col_e3_norm.replace("_norm", "_abs")
 # ==============================================================================
 def main():
     print("=" * 60)
-    print("ETL: GEE Copernicus DEM — E3 (Suscetibilidade ao Nível do Mar)")
-    print(f"Fonte: {GEE_DIR}")
+    print("ETL: GEE Copernicus DEM — E3 (Sea Level Rise Susceptibility)")
+    print(f"Source: {GEE_DIR}")
     print("=" * 60)
 
     # Load all coastal UF CSVs
-    print("\n1/4 - Carregando CSVs do GEE...")
+    print("\n1/4 - Loading GEE CSVs...")
     csv_files = sorted(GEE_DIR.glob("h3_susc_mar_*.csv"))
     if not csv_files:
-        raise FileNotFoundError(f"Nenhum CSV encontrado em: {GEE_DIR}")
-    print(f"   Arquivos encontrados: {len(csv_files)}")
+        raise FileNotFoundError(f"No CSV found in: {GEE_DIR}")
+    print(f"   Files found: {len(csv_files)}")
 
     parts = []
     for path in csv_files:
@@ -46,20 +46,20 @@ def main():
             df.columns = df.columns.str.lower()
             df = df[["h3_id", "qtd_dom", "risco_slr"]]
         parts.append(df)
-        print(f"   ✓ {path.name}  ({len(df):,} hexágonos)")
+        print(f"   ✓ {path.name}  ({len(df):,} hexagons)")
 
     df_all = pd.concat(parts, ignore_index=True)
-    print(f"\n   Total: {len(df_all):,} hexágonos costeiros carregados")
+    print(f"\n   Total: {len(df_all):,} coastal hexagons loaded")
 
     dupes = df_all["h3_id"].duplicated().sum()
     if dupes > 0:
-        print(f"   AVISO: {dupes:,} h3_ids duplicados — mantendo primeiro valor.")
+        print(f"   WARNING: {dupes:,} duplicate h3_ids — keeping first value.")
         df_all = df_all.drop_duplicates(subset="h3_id", keep="first")
 
     # ==============================================================================
     # 3. INDICATOR CALCULATION
     # ==============================================================================
-    print("\n2/4 - Calculando indicador...")
+    print("\n2/4 - Calculating indicator...")
 
     df_all["risco_slr"] = pd.to_numeric(df_all["risco_slr"], errors="coerce").fillna(0)
     df_all["qtd_dom"]   = pd.to_numeric(df_all["qtd_dom"],   errors="coerce").fillna(0)
@@ -70,17 +70,17 @@ def main():
     # and this formula still holds correctly without any changes.
     df_all[col_e3_abs] = df_all["qtd_dom"] * df_all["risco_slr"]
 
-    # winsorize=False: indicador costeiro (<1% dos hexágonos), P99=0 colapsaria a normalização
+    # winsorize=False: coastal indicator (<1% of hexagons), P99=0 would collapse normalisation
     df_all[col_e3_norm] = utils.normalize_minmax(df_all[col_e3_abs], winsorize=False)
 
     n_risk = (df_all["risco_slr"] > 0).sum()
-    print(f"   Hexágonos com risco > 0: {n_risk:,}")
-    print(f"   Total domicílios em risco: {int(df_all.loc[df_all['risco_slr'] > 0, 'qtd_dom'].sum()):,}")
+    print(f"   Hexagons with risk > 0: {n_risk:,}")
+    print(f"   Total households at risk: {int(df_all.loc[df_all['risco_slr'] > 0, 'qtd_dom'].sum()):,}")
 
     # ==============================================================================
     # 4. MERGE WITH H3 BASE AND SAVE
     # ==============================================================================
-    print("\n3/4 - Mesclando com malha H3 base...")
+    print("\n3/4 - Merging with H3 base grid...")
     df_h3 = pd.read_parquet(cfg.FILES_H3["base_metadata"], columns=["h3_id"])
 
     df_final = df_h3.merge(
@@ -91,35 +91,35 @@ def main():
     # Inland hexagons (not in coastal CSVs) are not at risk → fill with 0
     df_final[[col_e3_abs, col_e3_norm]] = df_final[[col_e3_abs, col_e3_norm]].fillna(0)
 
-    print(f"   Hexágonos com domicílios em risco: {(df_final[col_e3_abs] > 0).sum():,}")
+    print(f"   Hexagons with households at risk: {(df_final[col_e3_abs] > 0).sum():,}")
 
-    print("\n4/4 - Salvando parquet...")
+    print("\n4/4 - Saving parquet...")
     utils.save_parquet(df_final, cfg.FILES_H3["e3"])
-    print(f"   ✓ Salvo: {cfg.FILES_H3['e3'].name}")
+    print(f"   ✓ Saved: {cfg.FILES_H3['e3'].name}")
 
     _write_diagnostic(df_all, df_final, csv_files)
-    print(f"\nDiagnóstico: {DIAGNOSTIC_TXT}")
-    print("Concluído!")
+    print(f"\nDiagnostic: {DIAGNOSTIC_TXT}")
+    print("Done!")
 
 
 def _write_diagnostic(df_all, df_final, csv_files):
     with open(DIAGNOSTIC_TXT, "w", encoding="utf-8") as f:
         f.write("=" * 60 + "\n")
-        f.write("GEE Copernicus DEM — E3 Nível do Mar ETL Diagnostic\n")
+        f.write("GEE Copernicus DEM — E3 Sea Level Rise ETL Diagnostic\n")
         f.write(f"Run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write("=" * 60 + "\n\n")
-        f.write(f"Diretório GEE : {GEE_DIR}\n")
-        f.write(f"Arquivos lidos: {len(csv_files)}\n\n")
+        f.write(f"GEE directory : {GEE_DIR}\n")
+        f.write(f"Files read    : {len(csv_files)}\n\n")
 
-        f.write("--- risco_slr (hexágonos costeiros) ---\n")
+        f.write("--- risco_slr (coastal hexagons) ---\n")
         vc = df_all["risco_slr"].value_counts().sort_index()
         for v, c in vc.items():
-            f.write(f"  risco_slr={v}: {c:,} hexágonos\n")
+            f.write(f"  risco_slr={v}: {c:,} hexagons\n")
         f.write(f"\n  Total domicílios em risco: {int(df_all.loc[df_all['risco_slr'] > 0, 'qtd_dom'].sum()):,}\n\n")
 
         for col in [col_e3_abs, col_e3_norm]:
             s = df_final[col]
-            f.write(f"--- {col} (malha completa, interior=0) ---\n")
+            f.write(f"--- {col} (full grid, inland=0) ---\n")
             f.write(f"  mean   = {s.mean():.6f}\n")
             f.write(f"  median = {s.median():.6f}\n")
             f.write(f"  min    = {s.min():.6f}\n")

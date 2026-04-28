@@ -8,20 +8,20 @@ def main():
     utils.setup_logging()
     logger = logging.getLogger("MAIN")
     
-    logger.info(">>> INICIANDO CÁLCULO DO ÍNDICE DE INJUSTIÇA CLIMÁTICA <<<")
+    logger.info(">>> STARTING CLIMATE INJUSTICE INDEX CALCULATION <<<")
 
     try:
         pipeline.run()
 
-        logger.info(">>> PROCESSO CONCLUÍDO COM SUCESSO! <<<")
-        logger.info("Verifique a pasta 'data/outputs/results/' para os arquivos gerados.")
+        logger.info(">>> PROCESS COMPLETED SUCCESSFULLY! <<<")
+        logger.info("Check the 'data/outputs/results/' folder for generated files.")
 
     except KeyboardInterrupt:
-        logger.warning("Processo interrompido pelo usuário (Ctrl+C).")
+        logger.warning("Process interrupted by user (Ctrl+C).")
         sys.exit(0)
 
     except Exception as e:
-        logger.critical(f"ERRO NÃO TRATADO: {e}", exc_info=True)
+        logger.critical(f"UNHANDLED ERROR: {e}", exc_info=True)
         sys.exit(1)
 
 if __name__ == "__main__":

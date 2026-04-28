@@ -26,16 +26,16 @@ col_e4_abs  = col_e4_norm.replace("_norm", "_abs")
 # ==============================================================================
 def main():
     print("=" * 60)
-    print("ETL: GEE Landsat — E4 (Calor Extremo / Anomalia de LST)")
-    print(f"Fonte: {GEE_DIR}")
+    print("ETL: GEE Landsat — E4 (Extreme Heat / LST Anomaly)")
+    print(f"Source: {GEE_DIR}")
     print("=" * 60)
 
     # Load all UF CSVs
-    print("\n1/4 - Carregando CSVs do GEE...")
+    print("\n1/4 - Loading GEE CSVs...")
     csv_files = sorted(GEE_DIR.glob("h3_anomalia_calor_*.csv"))
     if not csv_files:
-        raise FileNotFoundError(f"Nenhum CSV encontrado em: {GEE_DIR}")
-    print(f"   Arquivos encontrados: {len(csv_files)}")
+        raise FileNotFoundError(f"No CSV found in: {GEE_DIR}")
+    print(f"   Files found: {len(csv_files)}")
 
     parts = []
     for path in csv_files:
@@ -47,21 +47,21 @@ def main():
             df.columns = df.columns.str.lower()
             df = df[["h3_id", "anomalia_temp"]]
         parts.append(df)
-        print(f"   ✓ {path.name}  ({len(df):,} hexágonos)")
+        print(f"   ✓ {path.name}  ({len(df):,} hexagons)")
 
     df_all = pd.concat(parts, ignore_index=True)
-    print(f"\n   Total: {len(df_all):,} hexágonos carregados")
+    print(f"\n   Total: {len(df_all):,} hexagons loaded")
 
     # Sanity check for duplicates
     dupes = df_all["h3_id"].duplicated().sum()
     if dupes > 0:
-        print(f"   AVISO: {dupes:,} h3_ids duplicados — mantendo primeiro valor.")
+        print(f"   WARNING: {dupes:,} duplicate h3_ids — keeping first value.")
         df_all = df_all.drop_duplicates(subset="h3_id", keep="first")
 
     # ==============================================================================
     # 3. INDICATOR CALCULATION
     # ==============================================================================
-    print("\n2/4 - Calculando indicador...")
+    print("\n2/4 - Calculating indicator...")
 
     df_all["anomalia_temp"] = pd.to_numeric(df_all["anomalia_temp"], errors="coerce")
 
@@ -74,14 +74,14 @@ def main():
     n_warming   = (df_all[col_e4_abs] > 0).sum()
     n_stable    = (df_all[col_e4_abs] == 0).sum()
     n_null      = df_all[col_e4_abs].isna().sum()
-    print(f"   Hexágonos com aquecimento (anomalia > 0): {n_warming:,}")
-    print(f"   Hexágonos estáveis/resfriados (≤ 0):      {n_stable:,}")
-    print(f"   Hexágonos sem dado (NaN):                 {n_null:,}")
+    print(f"   Hexagons warming (anomaly > 0): {n_warming:,}")
+    print(f"   Hexagons stable/cooling (≤ 0):  {n_stable:,}")
+    print(f"   Hexagons without data (NaN):    {n_null:,}")
 
     # ==============================================================================
     # 4. MERGE WITH H3 BASE AND SAVE
     # ==============================================================================
-    print("\n3/4 - Mesclando com malha H3 base...")
+    print("\n3/4 - Merging with H3 base grid...")
     df_h3 = pd.read_parquet(cfg.FILES_H3["base_metadata"], columns=["h3_id"])
     df_final = df_h3.merge(
         df_all[["h3_id", col_e4_abs, col_e4_norm]],
@@ -90,36 +90,36 @@ def main():
 
     n_matched  = df_final[col_e4_abs].notna().sum()
     n_unmatched = df_final[col_e4_abs].isna().sum()
-    print(f"   Hexágonos com valor:    {n_matched:,}")
-    print(f"   Hexágonos sem match:    {n_unmatched:,}")
+    print(f"   Hexagons with value:    {n_matched:,}")
+    print(f"   Hexagons without match: {n_unmatched:,}")
 
-    print("\n4/4 - Salvando parquet...")
+    print("\n4/4 - Saving parquet...")
     utils.save_parquet(df_final, cfg.FILES_H3["e4"])
-    print(f"   ✓ Salvo: {cfg.FILES_H3['e4'].name}")
+    print(f"   ✓ Saved: {cfg.FILES_H3['e4'].name}")
 
     _write_diagnostic(df_all, df_final, csv_files)
-    print(f"\nDiagnóstico: {DIAGNOSTIC_TXT}")
-    print("Concluído!")
+    print(f"\nDiagnostic: {DIAGNOSTIC_TXT}")
+    print("Done!")
 
 
 def _write_diagnostic(df_all, df_final, csv_files):
     with open(DIAGNOSTIC_TXT, "w", encoding="utf-8") as f:
         f.write("=" * 60 + "\n")
-        f.write("GEE Landsat — E4 Calor Extremo ETL Diagnostic\n")
+        f.write("GEE Landsat — E4 Extreme Heat ETL Diagnostic\n")
         f.write(f"Run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write("=" * 60 + "\n\n")
-        f.write(f"Diretório GEE : {GEE_DIR}\n")
-        f.write(f"Arquivos lidos: {len(csv_files)}\n\n")
+        f.write(f"GEE directory : {GEE_DIR}\n")
+        f.write(f"Files read    : {len(csv_files)}\n\n")
 
-        f.write("--- anomalia_temp (bruta, antes do clip) ---\n")
+        f.write("--- anomalia_temp (raw, before clip) ---\n")
         s_raw = df_all["anomalia_temp"].dropna()
         f.write(f"  mean   = {s_raw.mean():.4f} °C\n")
         f.write(f"  median = {s_raw.median():.4f} °C\n")
         f.write(f"  min    = {s_raw.min():.4f} °C\n")
         f.write(f"  max    = {s_raw.max():.4f} °C\n")
-        f.write(f"  < 0    = {(s_raw < 0).sum():,} hexágonos\n")
-        f.write(f"  = 0    = {(s_raw == 0).sum():,} hexágonos\n")
-        f.write(f"  > 0    = {(s_raw > 0).sum():,} hexágonos\n\n")
+        f.write(f"  < 0    = {(s_raw < 0).sum():,} hexagons\n")
+        f.write(f"  = 0    = {(s_raw == 0).sum():,} hexagons\n")
+        f.write(f"  > 0    = {(s_raw > 0).sum():,} hexagons\n\n")
 
         for col in [col_e4_abs, col_e4_norm]:
             s = df_final[col].dropna()

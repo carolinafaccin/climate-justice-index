@@ -217,7 +217,6 @@ run_pipeline.bat
 __pycache__/
 etl/archive/
 logs/
-.streamlit/
-.render/
 diagnose/champ/
-diagnose/ 
+diagnose/
+.claude/

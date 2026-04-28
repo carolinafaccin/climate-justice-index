@@ -15,7 +15,7 @@ from src import utils
 # ==============================================================================
 QUEIMADAS_DIR = cfg.RAW_DIR / cfg.INDICATORS["e5"]["source"]["dir"]
 ANOS          = list(range(2016, 2026))   # 2016–2025
-K_RING        = 4                         # ~1 km buffer em H3 res9
+K_RING        = 4                         # ~1 km buffer in H3 res9
 
 H3_RES = cfg.H3_RES
 
@@ -40,24 +40,24 @@ except AttributeError:
 # ==============================================================================
 def main():
     print("=" * 60)
-    print("ETL: INPE Queimadas — E5 (Proximidade a focos de queimadas)")
-    print(f"Anos: {ANOS[0]}–{ANOS[-1]}  |  k-ring: {K_RING} (~1 km)")
+    print("ETL: INPE Fire Hotspots — E5 (Proximity to fire hotspots)")
+    print(f"Years: {ANOS[0]}–{ANOS[-1]}  |  k-ring: {K_RING} (~1 km)")
     print("=" * 60)
 
     # Load H3 base
-    print("\n1/4 - Carregando malha H3 base...")
+    print("\n1/4 - Loading H3 base grid...")
     df_h3 = pd.read_parquet(cfg.FILES_H3["base_metadata"], columns=["h3_id"])
     all_h3 = set(df_h3["h3_id"].values)
-    print(f"   {len(all_h3):,} hexágonos na malha base.")
+    print(f"   {len(all_h3):,} hexagons in base grid.")
 
     # For each year, find exposed hexagons
-    print("\n2/4 - Processando focos por ano...")
+    print("\n2/4 - Processing hotspots by year...")
     year_exposure = {}   # {ano: set of exposed h3_ids}
 
     for ano in ANOS:
         path = QUEIMADAS_DIR / f"{ano}.csv"
         if not path.exists():
-            print(f"   [{ano}] AVISO: arquivo não encontrado — {path.name}")
+            print(f"   [{ano}] WARNING: file not found — {path.name}")
             continue
 
         df = pd.read_csv(path, usecols=["latitude", "longitude"], low_memory=False)
@@ -79,15 +79,15 @@ def main():
         # Intersect with the H3 base grid (Brazil only)
         exposed_in_base = exposed & all_h3
         year_exposure[ano] = exposed_in_base
-        print(f"   [{ano}] {len(df):,} focos → {len(fire_cells):,} células únicas → "
-              f"{len(exposed_in_base):,} hexágonos expostos")
+        print(f"   [{ano}] {len(df):,} hotspots → {len(fire_cells):,} unique cells → "
+              f"{len(exposed_in_base):,} exposed hexagons")
 
     n_years = len(year_exposure)
     if n_years == 0:
-        raise RuntimeError("Nenhum arquivo de queimadas encontrado. Verifique o caminho.")
+        raise RuntimeError("No fire hotspot files found. Check the directory path.")
 
     # Aggregate: count how many years each hexagon was exposed
-    print(f"\n3/4 - Agregando exposição ({n_years} anos)...")
+    print(f"\n3/4 - Aggregating exposure ({n_years} years)...")
     exposure_count = pd.Series(0, index=sorted(all_h3), dtype=np.int16)
     for ano, exposed_set in year_exposure.items():
         in_index = exposure_count.index.isin(exposed_set)
@@ -101,14 +101,14 @@ def main():
     df_agg[col_e5_norm] = utils.normalize_minmax(df_agg[col_e5_abs], winsorize=True)
 
     # Merge with H3 base and save
-    print("4/4 - Salvando parquet...")
+    print("4/4 - Saving parquet...")
     df_final = df_h3.merge(df_agg[["h3_id", col_e5_abs, col_e5_norm]], on="h3_id", how="left")
     utils.save_parquet(df_final, cfg.FILES_H3["e5"])
-    print(f"   ✓ Salvo: {cfg.FILES_H3['e5'].name}")
+    print(f"   ✓ Saved: {cfg.FILES_H3['e5'].name}")
 
     _write_diagnostic(df_agg, df_final, n_years, year_exposure)
-    print(f"\nDiagnóstico: {DIAGNOSTIC_TXT}")
-    print("Concluído!")
+    print(f"\nDiagnostic: {DIAGNOSTIC_TXT}")
+    print("Done!")
 
 
 def _write_diagnostic(df_agg, df_final, n_years, year_exposure):
@@ -117,18 +117,18 @@ def _write_diagnostic(df_agg, df_final, n_years, year_exposure):
         f.write("INPE Queimadas ETL Diagnostic\n")
         f.write(f"Run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write("=" * 60 + "\n\n")
-        f.write(f"Diretório queimadas : {QUEIMADAS_DIR}\n")
-        f.write(f"Anos processados    : {sorted(year_exposure.keys())}\n")
+        f.write(f"Fire hotspots dir   : {QUEIMADAS_DIR}\n")
+        f.write(f"Years processed     : {sorted(year_exposure.keys())}\n")
         f.write(f"k-ring              : {K_RING}\n\n")
 
-        f.write("Hexágonos expostos por ano:\n")
+        f.write("Exposed hexagons per year:\n")
         for ano in sorted(year_exposure):
             f.write(f"  {ano}: {len(year_exposure[ano]):,}\n")
 
-        f.write(f"\nDistribuição de anos_expostos (0–{n_years}):\n")
+        f.write(f"\nDistribution of anos_expostos (0–{n_years}):\n")
         dist = df_agg["anos_expostos"].value_counts().sort_index()
         for v, c in dist.items():
-            f.write(f"  {v:2d} anos: {c:,} hexágonos\n")
+            f.write(f"  {v:2d} years: {c:,} hexagons\n")
 
         f.write(f"\n--- {col_e5_abs} ---\n")
         s = df_final[col_e5_abs].dropna()

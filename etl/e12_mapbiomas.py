@@ -82,16 +82,16 @@ def _read_cnefe_chunk(path):
 # ==============================================================================
 def main():
     print("=" * 60)
-    print("ETL: MapBiomas — E1 (Deslizamentos) + E2 (Inundações)")
-    print("Fonte de domicílios: CNEFE 2022")
+    print("ETL: MapBiomas — E1 (Landslides) + E2 (Floods)")
+    print("Household source: CNEFE 2022")
     print("=" * 60)
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
     csv_files = sorted(CNEFE_DIR.glob("*.csv"))
     if not csv_files:
-        raise FileNotFoundError(f"Nenhum CSV encontrado em: {CNEFE_DIR}")
-    print(f"\nArquivos CNEFE encontrados: {len(csv_files)}")
+        raise FileNotFoundError(f"No CSV found in: {CNEFE_DIR}")
+    print(f"\nCNEFE files found: {len(csv_files)}")
 
     agg_parts = []
     total_dom = 0
@@ -134,23 +134,23 @@ def main():
                 agg_parts.append(state_agg)
 
             total_dom += n_state
-            print(f"  {n_state:,} domicílios")
+            print(f"  {n_state:,} households")
 
     # Final aggregation
-    print(f"\nTotal de domicílios processados: {total_dom:,}")
-    print("Agregando por hexágono H3...")
+    print(f"\nTotal households processed: {total_dom:,}")
+    print("Aggregating by H3 hexagon...")
     df_agg = pd.concat(agg_parts).groupby('h3_id').sum().reset_index()
-    print(f"Hexágonos com ao menos 1 domicílio: {len(df_agg):,}")
+    print(f"Hexagons with at least 1 household: {len(df_agg):,}")
 
     df_agg[col_e1_abs] = df_agg['l_sum'] / df_agg['total']
     df_agg[col_e2_abs] = df_agg['f_sum'] / df_agg['total']
-    # Proporções já limitadas em [0,1]: winsorize=False evita colapso em indicadores
-    # esparsos onde P99 cai em 0 (ex: deslizamentos afetam < 1% dos hexágonos)
+    # Proportions already bounded in [0,1]: winsorize=False avoids collapse for sparse
+    # indicators where P99 drops to 0 (e.g. landslides affect < 1% of hexagons)
     df_agg[col_e1_norm] = utils.normalize_minmax(df_agg[col_e1_abs], winsorize=False)
     df_agg[col_e2_norm] = utils.normalize_minmax(df_agg[col_e2_abs], winsorize=False)
 
     # Merge with H3 base and save
-    print("Mesclando com malha H3 base...")
+    print("Merging with H3 base grid...")
     df_h3 = pd.read_parquet(cfg.FILES_H3['base_metadata'], columns=['h3_id'])
 
     df_e1 = df_h3.merge(df_agg[['h3_id', col_e1_abs, col_e1_norm]], on='h3_id', how='left')
@@ -162,8 +162,8 @@ def main():
     print(f"  ✓ Salvo: {cfg.FILES_H3['e2'].name}")
 
     _write_diagnostic(df_agg, df_e1, df_e2, total_dom)
-    print(f"\nDiagnóstico: {DIAGNOSTIC_TXT}")
-    print("Concluído!")
+    print(f"\nDiagnostic: {DIAGNOSTIC_TXT}")
+    print("Done!")
 
 
 def _write_diagnostic(df_agg, df_e1, df_e2, total_dom):
@@ -172,15 +172,15 @@ def _write_diagnostic(df_agg, df_e1, df_e2, total_dom):
         f.write("MapBiomas ETL Diagnostic\n")
         f.write(f"Run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write("=" * 60 + "\n\n")
-        f.write(f"Raster deslizamentos : {RASTER_LANDSLIDES}\n")
-        f.write(f"Raster inundações    : {RASTER_FLOODS}\n")
-        f.write(f"CNEFE dir            : {CNEFE_DIR}\n\n")
-        f.write(f"Total domicílios processados     : {total_dom:,}\n")
-        f.write(f"Hexágonos com ≥1 domicílio       : {len(df_agg):,}\n\n")
+        f.write(f"Landslides raster : {RASTER_LANDSLIDES}\n")
+        f.write(f"Floods raster     : {RASTER_FLOODS}\n")
+        f.write(f"CNEFE dir         : {CNEFE_DIR}\n\n")
+        f.write(f"Total households processed     : {total_dom:,}\n")
+        f.write(f"Hexagons with ≥1 household     : {len(df_agg):,}\n\n")
 
         for label, col_abs, col_norm, df_ind in [
-            ("E1 - Deslizamentos", col_e1_abs, col_e1_norm, df_e1),
-            ("E2 - Inundações",    col_e2_abs, col_e2_norm, df_e2),
+            ("E1 - Landslides", col_e1_abs, col_e1_norm, df_e1),
+            ("E2 - Floods",     col_e2_abs, col_e2_norm, df_e2),
         ]:
             f.write(f"--- {label} ---\n")
             for col in [col_abs, col_norm]:

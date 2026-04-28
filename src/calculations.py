@@ -20,15 +20,15 @@ def _nanmean_cols(df: pd.DataFrame, cols: list) -> pd.Series:
 
 
 def calculate_simple_iic(df: pd.DataFrame) -> pd.DataFrame:
-    logging.info("Calculando Índice de Injustiça Climática via média simples...")
+    logging.info("Calculating Climate Injustice Index via simple mean...")
 
-    # 1. Índice por dimensão (com inversão de IG)
+    # 1. Index per dimension (with IG inversion)
     dim_cols = []
     for dim_name, dim_meta in cfg.DIMENSION_META.items():
         indicator_keys = cfg.DIMENSIONS[dim_name]
         existing = [k for k in indicator_keys if k in df.columns]
         if not existing:
-            logging.warning(f"Dimensão '{dim_name}': nenhum indicador encontrado.")
+            logging.warning(f"Dimension '{dim_name}': no indicators found.")
             continue
 
         abbr = dim_meta['abbr'].lower()   # "ip", "iv", "ie", "ig"
@@ -39,9 +39,9 @@ def calculate_simple_iic(df: pd.DataFrame) -> pd.DataFrame:
 
         df[abbr] = dim_avg
         dim_cols.append(abbr)
-        logging.info(f"Dimensão '{dim_name}' → {dim_meta['abbr']} calculada (invertida={dim_meta['invert']}).")
+        logging.info(f"Dimension '{dim_name}' → {dim_meta['abbr']} calculated (inverted={dim_meta['invert']}).")
 
-    # 2. IIC final: média simples dos índices de dimensão (já em [0,1] — sem renormalizar)
+    # 2. Final IIC: simple mean of dimension indices (already in [0,1] — no renormalization)
     df['iic_final'] = _nanmean_cols(df, dim_cols)
 
     return df

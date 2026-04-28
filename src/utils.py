@@ -90,14 +90,11 @@ def normalize_minmax(series: pd.Series, winsorize: bool = False, limits: tuple =
     return (s - min_val) / (max_val - min_val)
 
 def save_parquet(df: pd.DataFrame, path: Path):
-    """
-    Salva o arquivo Parquet sobrescrevendo a versão anterior.
-    A pasta de destino é criada automaticamente caso não exista.
-    """
+    """Saves the Parquet file, overwriting the previous version. Creates the destination folder if it doesn't exist."""
     path = Path(path)
-    # Garante que a pasta (ex: data/inputs/clean) exista
+    # Ensure destination folder exists (e.g. data/inputs/clean)
     path.parent.mkdir(parents=True, exist_ok=True)
-    
-    logging.info(f"Salvando Parquet em: {path.name}...")
+
+    logging.info(f"Saving Parquet to: {path.name}...")
     df.to_parquet(path)
-    logging.info("Salvo com sucesso.")
+    logging.info("Saved successfully.")
