@@ -128,7 +128,7 @@
         "e1": {
           "name": "deslizamentos",
           "abbr": "des",
-          "description": "Percentual de áreas com ao menos 1 domicílio com suscetibilidade a deslizamentos de terra",
+          "description": "Percentual de domicílios em áreas com suscetibilidade a deslizamentos de terra",
           "source": {
             "file": "mapbiomas/mapbiomas_landslides_2024.tif",
             "cnefe_dir": "ibge/censo/2022/cnefe/cnefe_csv/por_uf"
