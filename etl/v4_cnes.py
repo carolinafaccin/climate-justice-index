@@ -11,20 +11,23 @@ from datetime import datetime
 Modelo Gravitacional de Acessibilidade a Saúde (v4 — CNES).
 
 Mede a "força de atração" da infraestrutura de saúde sobre cada hexágono.
-Estabelecimentos maiores (mais serviços) atraem de mais longe; quanto maior
-a distância, menor a influência do estabelecimento sobre o hexágono.
+Estabelecimentos com mais serviços atraem de mais longe; quanto maior a
+distância, menor a influência sobre o hexágono.
 
 Fórmula:
     v4_sau_abs = Σ [ capacity_score_j / (distância_j_metros + 100) ]
 
-    O buffer de 100m evita divisão por zero quando o hexágono coincide com
-    o estabelecimento. Considera as 3 unidades mais próximas (k=3).
+    Buffer de 100m evita divisão por zero. Considera os k estabelecimentos
+    mais próximos (k definido em indicators.json → v4 → source → k_nearest).
+
+Normalização:
+    Usa rank percentil (em vez de min-max) para lidar com a distribuição
+    power-law dos scores gravitacionais, que tornaria o min-max ineficaz.
+    col_norm = 1 − rank_percentil(log_score)
 
 Direção do indicador:
     v4_sau_abs alto  →  boa acessibilidade  →  MENOS vulnerável.
-    Para ser consistente com os demais indicadores de vulnerabilidade
-    (onde alto = mais vulnerável), o col_norm é INVERTIDO: 1 − norm.
-    Assim, col_norm alto = inacessibilidade alta = mais vulnerável.
+    col_norm alto = inacessibilidade alta = mais vulnerável.
 """
 
 # ==============================================================================
@@ -63,7 +66,10 @@ CNES_SERVICES = [
     'st_centro_cirurgico', 'st_centro_obstetrico', 'st_centro_neonatal',
     'st_atend_hospitalar', 'st_servico_apoio', 'st_atend_ambulatorial'
 ]
-N_NEAREST_FACILITIES = 3   # k in kd-tree query
+# k_nearest and max_distance_m are defined in indicators.json → v4 → source
+# so they remain visible and adjustable alongside other indicator parameters
+N_NEAREST_FACILITIES = cfg.INDICATORS["v4"]["source"].get("k_nearest", 3)
+MAX_DISTANCE_M       = cfg.INDICATORS["v4"]["source"].get("max_distance_m", None)
 DISTANCE_BUFFER_M    = 100 # added to distance to avoid division by zero
 
 # =====================================================================
@@ -137,6 +143,12 @@ tree = cKDTree(coords_cnes)
 distances, indices = tree.query(coords_h3, k=N_NEAREST_FACILITIES)
 gravitational_weights = capacities[indices] / (distances + DISTANCE_BUFFER_M)
 
+# Zero out contributions from facilities beyond the maximum influence radius.
+# This prevents distant facilities from inflating scores in poorly-served areas
+# and makes the urban density advantage explicit in the gravitational sum.
+if MAX_DISTANCE_M is not None:
+    gravitational_weights[distances > MAX_DISTANCE_M] = 0.0
+
 # Uses the dynamic column name!
 df_h3[col_abs] = np.sum(gravitational_weights, axis=1)
 
@@ -147,11 +159,13 @@ df_h3 = df_h3.drop(columns=['lat', 'lng', 'geometry'], errors='ignore')
 # =====================================================================
 print("5/5 - Applying logarithmic function, normalizing and saving...")
 
-# Applies logarithmic function to flatten giant outliers
+# log1p for mild compression before ranking
 df_h3[col_log] = np.log1p(df_h3[col_abs])
 
-# Invert: high accessibility → low vulnerability score (consistent with other v* indicators)
-df_h3[col_norm] = 1.0 - utils.normalize_minmax(df_h3[col_log], winsorize=True)
+# Rank-percentile normalization: robust to the power-law distribution of gravitational scores.
+# rank(pct=True) → 0 = lowest score (least accessible), 1 = highest (most accessible).
+# After inversion: col_norm = 1 → least accessible (most vulnerable), 0 → most accessible.
+df_h3[col_norm] = 1.0 - df_h3[col_log].rank(pct=True)
 
 # Remove the intermediate log column
 df_h3 = df_h3.drop(columns=[col_log])
@@ -175,7 +189,8 @@ with open(DIAGNOSTIC_TXT, 'w', encoding='utf-8') as f:
     f.write("="*50 + "\n\n")
     
     f.write(f"Total CNES facilities processed: {len(df_cnes):,}\n")
-    f.write(f"Total H3 hexagons processed: {len(df_h3):,}\n\n")
+    f.write(f"Total H3 hexagons processed: {len(df_h3):,}\n")
+    f.write(f"k_nearest: {N_NEAREST_FACILITIES}  |  max_distance_m: {MAX_DISTANCE_M}  |  distance_buffer_m: {DISTANCE_BUFFER_M}\n\n")
     
     min_distance = distances[:, 0]
     
@@ -193,10 +208,94 @@ with open(DIAGNOSTIC_TXT, 'w', encoding='utf-8') as f:
     if 'nm_uf' in df_h3.columns:
         cols_show.insert(2, 'nm_uf')
         
-    f.write("--- TOP 5 HEXAGONS WITH HIGHEST ACCESSIBILITY (Urban Centers) ---\n")
+    f.write("--- TOP 5 MOST VULNERABLE HEXAGONS (Lowest Accessibility) ---\n")
     f.write(df_h3.sort_values(by=col_norm, ascending=False)[cols_show].head().to_string() + "\n\n")
-    
-    f.write("--- BOTTOM 5 HEXAGONS WITH LOWEST ACCESSIBILITY (Isolated Locations) ---\n")
+
+    f.write("--- TOP 5 LEAST VULNERABLE HEXAGONS (Highest Accessibility) ---\n")
     f.write(df_h3.sort_values(by=col_norm, ascending=True)[cols_show].head().to_string() + "\n")
 
 print(f"✅ Diagnostic saved at: {DIAGNOSTIC_TXT}")
+
+# =====================================================================
+# 10. VISUALIZATION (MAPS)
+# =====================================================================
+print("Generating maps...")
+
+try:
+    import matplotlib.pyplot as plt
+    from shapely.geometry import Polygon as ShapelyPolygon
+except ImportError as e:
+    print(f"  Skipping maps — missing dependency: {e}")
+else:
+    MAPS_DIR = cfg.FIGURES_DIR / "maps"
+    MAPS_DIR.mkdir(parents=True, exist_ok=True)
+
+    CMAP = "RdYlGn_r"  # vermelho = alta vulnerabilidade, verde = baixa
+
+    # Regenera centroides para plotagem (lat/lng já foram dropados anteriormente)
+    _centroids    = df_h3["h3_id"].apply(get_h3_centroid)
+    df_h3["_lat"] = [c[0] for c in _centroids]
+    df_h3["_lng"] = [c[1] for c in _centroids]
+    df_plot = df_h3.dropna(subset=["_lat", "_lng"])
+
+    # ── Mapa 1: Brasil — scatter amostrado ───────────────────────────────
+    sample = df_plot.sample(min(500_000, len(df_plot)), random_state=42)
+
+    fig, ax = plt.subplots(figsize=(10, 14))
+    sc = ax.scatter(
+        sample["_lng"], sample["_lat"],
+        c=sample[col_norm], cmap=CMAP, s=0.04, alpha=0.6, vmin=0, vmax=1,
+    )
+    plt.colorbar(sc, ax=ax, label="Vulnerabilidade (0 = menor, 1 = maior)", fraction=0.025)
+    ax.set_title(f"Indicador v4 — Acessibilidade à Saúde\n{col_norm}  |  Brasil", fontsize=13)
+    ax.set_xlabel("Longitude")
+    ax.set_ylabel("Latitude")
+    ax.set_aspect("equal")
+    map_br = MAPS_DIR / f"v4_sau_brasil_{now}.png"
+    fig.savefig(map_br, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  ✓ Mapa Brasil: {map_br.name}")
+
+    # ── Mapa 2: Porto Alegre — coroplético com polígonos H3 ──────────────
+    if "nm_mun" in df_h3.columns:
+        df_poa = df_h3[
+            df_h3["nm_mun"].str.contains("Porto Alegre", case=False, na=False)
+        ].copy()
+
+        if len(df_poa) > 0:
+            def _h3_to_polygon(h3_id):
+                try:
+                    boundary = (
+                        h3.cell_to_boundary(h3_id)
+                        if hasattr(h3, "cell_to_boundary")
+                        else h3.h3_to_geo_boundary(h3_id)
+                    )
+                    return ShapelyPolygon([(lng, lat) for lat, lng in boundary])
+                except Exception:
+                    return None
+
+            df_poa["geometry"] = df_poa["h3_id"].map(_h3_to_polygon)
+            df_poa = df_poa.dropna(subset=["geometry"])
+            gdf_poa = gpd.GeoDataFrame(df_poa, geometry="geometry", crs="EPSG:4326")
+
+            fig, ax = plt.subplots(figsize=(12, 12))
+            gdf_poa.plot(
+                column=col_norm, ax=ax, cmap=CMAP,
+                vmin=0, vmax=1, legend=True,
+                legend_kwds={"label": "Vulnerabilidade (0 = menor, 1 = maior)", "shrink": 0.5},
+            )
+            ax.set_title(
+                f"Indicador v4 — Acessibilidade à Saúde\n{col_norm}  |  Porto Alegre",
+                fontsize=13,
+            )
+            ax.axis("off")
+            map_poa = MAPS_DIR / f"v4_sau_porto_alegre_{now}.png"
+            fig.savefig(map_poa, dpi=200, bbox_inches="tight")
+            plt.close(fig)
+            print(f"  ✓ Mapa Porto Alegre: {map_poa.name}")
+        else:
+            print("  Porto Alegre não encontrado em nm_mun — mapa de detalhe pulado.")
+
+    df_h3 = df_h3.drop(columns=["_lat", "_lng"], errors="ignore")
+
+print("✅ Pipeline completo.")

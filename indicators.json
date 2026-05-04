@@ -71,7 +71,7 @@
             "source_dir": "ibge/censo/2022/agregados_por_setores/t0",
             "num_cols": ["v06004_v06001"],
             "den_cols": ["v06001"],
-            "cap_abs": 1212,
+            "cap_abs": 3636,
             "invert_norm": true
           }
         },
@@ -101,7 +101,12 @@
           "abbr": "sau",
           "description": "Acessibilidade gravitacional a estabelecimentos de saúde (modelo CNES)",
           "source": {
-            "file": "cnes/t1/cnes_estabelecimentos.csv"
+            "file": "cnes/2026-01/t1/cnes_estabelecimentos.csv",
+            "k_nearest": 20,
+            "max_distance_m": null,
+            "catchment_m": 5000,
+            "pop_col": "v01006",
+            "pop_source_dir": "ibge/censo/2022/agregados_por_setores/t0"
           }
         },
         "v5": {

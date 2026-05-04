@@ -40,12 +40,12 @@ def main():
     parts = []
     for path in csv_files:
         try:
-            df = pd.read_csv(path, usecols=["h3_id", "anomalia_temp"])
+            df = pd.read_csv(path, usecols=["h3_id", "anomalia_temp", "qtd_dom"])
         except ValueError:
             # fallback: read all columns and select manually
             df = pd.read_csv(path)
             df.columns = df.columns.str.lower()
-            df = df[["h3_id", "anomalia_temp"]]
+            df = df[["h3_id", "anomalia_temp", "qtd_dom"]]
         parts.append(df)
         print(f"   ✓ {path.name}  ({len(df):,} hexagons)")
 
@@ -64,9 +64,11 @@ def main():
     print("\n2/4 - Calculating indicator...")
 
     df_all["anomalia_temp"] = pd.to_numeric(df_all["anomalia_temp"], errors="coerce")
+    df_all["qtd_dom"]      = pd.to_numeric(df_all["qtd_dom"],      errors="coerce").fillna(0)
 
-    # e4_abs: positive anomaly only — cooling or stable hexagons score 0
-    df_all[col_e4_abs] = df_all["anomalia_temp"].clip(lower=0)
+    # e4_abs: heat intensity (positive anomaly only) × household count
+    # hexagons with no warming or no households score 0
+    df_all[col_e4_abs] = df_all["anomalia_temp"].clip(lower=0) * df_all["qtd_dom"]
 
     # e4_norm: min-max with winsorization
     df_all[col_e4_norm] = utils.normalize_minmax(df_all[col_e4_abs], winsorize=True)
@@ -74,9 +76,9 @@ def main():
     n_warming   = (df_all[col_e4_abs] > 0).sum()
     n_stable    = (df_all[col_e4_abs] == 0).sum()
     n_null      = df_all[col_e4_abs].isna().sum()
-    print(f"   Hexagons warming (anomaly > 0): {n_warming:,}")
-    print(f"   Hexagons stable/cooling (≤ 0):  {n_stable:,}")
-    print(f"   Hexagons without data (NaN):    {n_null:,}")
+    print(f"   Hexagons with exposure (anomaly > 0 and qtd_dom > 0): {n_warming:,}")
+    print(f"   Hexagons with no exposure (cooling or uninhabited):    {n_stable:,}")
+    print(f"   Hexagons without data (NaN):                          {n_null:,}")
 
     # ==============================================================================
     # 4. MERGE WITH H3 BASE AND SAVE
@@ -120,6 +122,13 @@ def _write_diagnostic(df_all, df_final, csv_files):
         f.write(f"  < 0    = {(s_raw < 0).sum():,} hexagons\n")
         f.write(f"  = 0    = {(s_raw == 0).sum():,} hexagons\n")
         f.write(f"  > 0    = {(s_raw > 0).sum():,} hexagons\n\n")
+
+        f.write("--- qtd_dom (households per hexagon) ---\n")
+        s_dom = df_all["qtd_dom"]
+        f.write(f"  sum    = {s_dom.sum():,.0f} households\n")
+        f.write(f"  mean   = {s_dom.mean():.2f}\n")
+        f.write(f"  median = {s_dom.median():.2f}\n")
+        f.write(f"  zeros  = {(s_dom == 0).sum():,} hexagons\n\n")
 
         for col in [col_e4_abs, col_e4_norm]:
             s = df_final[col].dropna()

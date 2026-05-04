@@ -210,13 +210,12 @@ __marimo__/
 
 # Config files
 config.local.json
-data/outputs/results/*.parquet
+data/
 run_pipeline.bat
 
 # Folders
 __pycache__/
 etl/archive/
 logs/
-diagnose/archive/
 diagnose/
 .claude/

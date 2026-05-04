@@ -10,9 +10,8 @@ O índice combina exposição a riscos climáticos, vulnerabilidade socioeconôm
 
 - **Grade espacial:** H3 resolução 9 (~105 m de lado por hexágono)
 - **Normalização:** Min-max de 0 a 1
-- **Interpolação censitária:** Ponderação dasyimétrica por domicílios para distribuir dados de setor censitário nos hexágonos
+- **Interpolação censitária:** Ponderação dasimétrica por domicílios para distribuir dados de setor censitário nos hexágonos
 - **Índices intermediários:** cada dimensão gera seu próprio índice — IP (Grupos Prioritários), IV (Vulnerabilidade), IE (Exposição), IG (Gestão Municipal)
-- **Inversão de IG:** como o índice mede *injustiça*, maior gestão = menor injustiça; IG é invertido antes de compor o IIC
 - **Índice final (IIC):** média simples de IP, IV, IE e IG invertido
 
 ---
