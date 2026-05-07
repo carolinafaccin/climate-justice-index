@@ -51,12 +51,7 @@ FILE_TS = _ts_match.group(1) if _ts_match else RESULTS_FILE.stem
 ALL_INDICATORS = diag_utils.ALL_INDICATOR_KEYS
 DIMS           = diag_utils.DIMS
 
-SUB_LABELS = {
-    "ip": "IP - Grupos Prioritários",
-    "iv": "IV - Vulnerabilidade",
-    "ie": "IE - Exposição",
-    "ig": "IG - Capacidade de Gestão Municipal",
-}
+SUB_LABELS = {k: v["label"] for k, v in DIMS.items()}
 
 # ==============================================================================
 # HELPERS
@@ -168,14 +163,13 @@ def fig_dimension(dim_key: str, meta: dict, df: pd.DataFrame) -> None:
 def fig_subindices_vs_iic(df: pd.DataFrame) -> None:
     fig, axes = plt.subplots(2, 2, figsize=(11, 10), constrained_layout=True)
     for ax, (sub, color) in zip(axes.flat, [(k, DIMS[k]["color"]) for k in DIMS]):
-        note = "  (invertida no IIC)" if sub == "ig" else ""
         _hexbin_scatter(
             ax,
             df[sub].to_numpy(dtype="float64"),
             df["iic_final"].to_numpy(dtype="float64"),
             xlabel=f"{sub.upper()} (0-1)",
             ylabel="IIC final (0-1)",
-            title=f"{SUB_LABELS[sub]}{note}",
+            title=SUB_LABELS[sub],
             color=color,
         )
     fig.suptitle(f"Sub-indices vs. IIC Final\nSample: {len(df):,} hexagons",
