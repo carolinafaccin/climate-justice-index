@@ -75,9 +75,10 @@ DIMENSIONS = {}
 DIMENSION_META = {}
 for dim, dim_data in _raw.get("dimensions", {}).items():
     DIMENSION_META[dim] = {
-        "abbr":   dim_data.get("abbr", dim),
-        "name":   dim_data.get("name", dim),
-        "invert": dim_data.get("invert", False),
+        "abbr":         dim_data.get("abbr", dim),
+        "name":         dim_data.get("name", dim),
+        "display_name": dim_data.get("display_name", dim_data.get("abbr", dim)),
+        "invert":       dim_data.get("invert", False),
     }
     ind_map = dim_data.get("indicators", {})
     DIMENSIONS[dim] = list(ind_map.keys())

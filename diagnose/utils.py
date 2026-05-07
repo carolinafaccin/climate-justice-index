@@ -27,64 +27,32 @@ ALL_INDICATOR_KEYS: list[str] = [k for dim in cfg.DIMENSIONS for k in cfg.DIMENS
 
 # ---------------------------------------------------------------------------
 # Dimension display config
-# Indicator lists come from cfg.DIMENSIONS so they stay in sync with
-# indicators.json.  Colors and Portuguese labels are render-specific and
-# live here.
+# Labels and ind_labels are derived from display_name fields in indicators.json
+# via cfg.  Only the chart colours are render-specific and hardcoded here.
 # ---------------------------------------------------------------------------
 _ABBR_TO_DIM = {meta["abbr"].lower(): dim for dim, meta in cfg.DIMENSION_META.items()}
 
+_DIM_COLORS: dict[str, str] = {
+    "ip": "#C0392B",
+    "iv": "#E67E22",
+    "ie": "#27AE60",
+    "ig": "#2980B9",
+}
+
 DIMS: dict = {
-    "ip": {
-        "label": "IP - Grupos Prioritários",
-        "color": "#C0392B",
-        "indicators": cfg.DIMENSIONS[_ABBR_TO_DIM["ip"]],
+    abbr: {
+        "label": (
+            f"{cfg.DIMENSION_META[dim]['abbr']} - {cfg.DIMENSION_META[dim]['display_name']}"
+            + (" (inverted in IIC)" if cfg.DIMENSION_META[dim]["invert"] else "")
+        ),
+        "color": _DIM_COLORS[abbr],
+        "indicators": cfg.DIMENSIONS[dim],
         "ind_labels": {
-            "p1": "p1 - Mulheres negras chefes de domicílio",
-            "p2": "p2 - População negra",
-            "p3": "p3 - Indígenas e quilombolas",
-            "p4": "p4 - Idosos (60 anos ou mais)",
-            "p5": "p5 - Crianças (9 anos ou menos)",
+            k: f"{k} - {cfg.INDICATORS[k]['display_name']}"
+            for k in cfg.DIMENSIONS[dim]
         },
-    },
-    "iv": {
-        "label": "IV - Vulnerabilidade Socioeconômica",
-        "color": "#E67E22",
-        "indicators": cfg.DIMENSIONS[_ABBR_TO_DIM["iv"]],
-        "ind_labels": {
-            "v1": "v1 - Baixa renda",
-            "v2": "v2 - Moradia precária",
-            "v3": "v3 - Educação",
-            "v4": "v4 - Acesso à saúde",
-            "v5": "v5 - Infraestrutura",
-        },
-    },
-    "ie": {
-        "label": "IE - Exposição a Riscos Climáticos",
-        "color": "#27AE60",
-        "indicators": cfg.DIMENSIONS[_ABBR_TO_DIM["ie"]],
-        "ind_labels": {
-            "e1": "e1 - Deslizamentos de terra",
-            "e2": "e2 - Inundações, alagamentos e enxurradas",
-            "e3": "e3 - Elevação do nível do mar",
-            "e4": "e4 - Calor extremo",
-            "e5": "e5 - Queimadas",
-        },
-    },
-    "ig": {
-        "label": "IG - Gestão Municipal (invertida no IIC)",
-        "color": "#2980B9",
-        "indicators": cfg.DIMENSIONS[_ABBR_TO_DIM["ig"]],
-        "ind_labels": {
-            "g1": "g1 - Investimento ambiental",
-            "g2": "g2 - Plano de contingência",
-            "g3": "g3 - Participação em NUPDECs",
-            "g4": "g4 - Conselhos municipais",
-            "g5": "g5 - Sistemas de alerta",
-            "g6": "g6 - Mapeamento e zoneamento de risco",
-            "g7": "g7 - Cadastro de famílias em risco",
-            "g8": "g8 - Políticas de direitos humanos",
-        },
-    },
+    }
+    for abbr, dim in _ABBR_TO_DIM.items()
 }
 
 # ---------------------------------------------------------------------------
