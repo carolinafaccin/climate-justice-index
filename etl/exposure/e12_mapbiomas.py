@@ -44,12 +44,16 @@ except AttributeError:
 # 2. HELPERS
 # ==============================================================================
 def _sample_risk(src, nodata, lons, lats):
-    """Point-sample raster at address coordinates; returns int8 array (1=risk, 0=no risk)."""
+    """Point-sample raster; returns float array (1.0=risk, 0.0=no risk, NaN=outside raster/nodata).
+
+    NaN is preserved so households outside the raster extent are excluded from the
+    hexagon aggregation count rather than being silently classified as 'not at risk'.
+    """
     coords = list(zip(lons, lats))
     vals = np.array([v[0] for v in src.sample(coords)], dtype=float)
     if nodata is not None:
         vals[vals == nodata] = np.nan
-    return (np.nan_to_num(vals, nan=0.0) > 0).astype(np.int8)
+    return np.where(np.isnan(vals), np.nan, (vals > 0).astype(float))
 
 
 def _read_cnefe_chunk(path):
@@ -158,8 +162,8 @@ def main():
 
     utils.save_parquet(df_e1, cfg.FILES_H3['e1'])
     utils.save_parquet(df_e2, cfg.FILES_H3['e2'])
-    print(f"  ✓ Salvo: {cfg.FILES_H3['e1'].name}")
-    print(f"  ✓ Salvo: {cfg.FILES_H3['e2'].name}")
+    print(f"  ✓ Saved: {cfg.FILES_H3['e1'].name}")
+    print(f"  ✓ Saved: {cfg.FILES_H3['e2'].name}")
 
     _write_diagnostic(df_agg, df_e1, df_e2, total_dom)
     print(f"\nDiagnostic: {DIAGNOSTIC_TXT}")

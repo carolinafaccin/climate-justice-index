@@ -66,12 +66,12 @@
         "v1": {
           "name": "renda",
           "abbr": "ren",
-          "description": "Renda média mensal do responsável pelo domicílio, limitada ao salário mínimo de 2022 (R$ 1.212) — setores com renda média acima do limiar recebem vulnerabilidade zero; abaixo, o gradiente reflete a defasagem em relação ao salário mínimo",
+          "description": "Renda média mensal do responsável pelo domicílio, limitada a dois salários mínimos (R$ 2.424, referência 2022) — setores com renda média acima do limiar recebem vulnerabilidade zero; abaixo, o gradiente reflete a defasagem em relação ao salário mínimo",
           "source": {
             "source_dir": "ibge/censo/2022/agregados_por_setores/t0",
             "num_cols": ["v06004_v06001"],
             "den_cols": ["v06001"],
-            "cap_abs": 3636,
+            "cap_abs": 2424,
             "invert_norm": true
           }
         },
@@ -99,14 +99,9 @@
         "v4": {
           "name": "saude",
           "abbr": "sau",
-          "description": "Acessibilidade gravitacional a estabelecimentos de saúde (modelo CNES)",
+          "description": "Inacessibilidade gravitacional a estabelecimentos de saúde: inverso da soma da capacidade de serviços do CNES ponderada pela distância euclidiana dos 3 estabelecimentos mais próximos",
           "source": {
-            "file": "cnes/2026-01/t1/cnes_estabelecimentos.csv",
-            "k_nearest": 20,
-            "max_distance_m": null,
-            "catchment_m": 5000,
-            "pop_col": "v01006",
-            "pop_source_dir": "ibge/censo/2022/agregados_por_setores/t0"
+            "file": "cnes/2026-01/t1/cnes_estabelecimentos.csv"
           }
         },
         "v5": {
@@ -151,7 +146,7 @@
         "e3": {
           "name": "mar",
           "abbr": "mar",
-          "description": "Quantidade de domicílios em áreas de suscetibilidade a elevação do nível do mar",
+          "description": "Quantidade de domicílios em hexágonos costeiros com elevação ≤ 1 m e distância ao oceano ≤ 10 km, ponderada pela fração de área em risco (Copernicus GLO-30)",
           "source": {
             "dir": "gee/suscetibilidade-elevacao-nivel-mar"
           }
@@ -159,7 +154,7 @@
         "e4": {
           "name": "calor",
           "abbr": "cal",
-          "description": "Quantidade de domicílios em áreas com alta temperatura superficial média",
+          "description": "Anomalia positiva de temperatura de superfície (LST) entre o período recente (2015–2024) e a média histórica (1985–2010), ponderada pela quantidade de domicílios por hexágono",
           "source": {
             "dir": "gee/anomalia_calor_1985-2025"
           }

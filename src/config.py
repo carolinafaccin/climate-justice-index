@@ -6,7 +6,7 @@ from pathlib import Path
 # 1. LOCAL PATHS CONFIGURATION
 # ==============================================================================
 BASE_DIR = Path(__file__).resolve().parent.parent
-CONFIG_PATH = BASE_DIR / "config.local.json"
+CONFIG_PATH = BASE_DIR / "config" / "config.local.json"
 
 if CONFIG_PATH.exists():
     with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
@@ -55,7 +55,7 @@ FILE_FINAL_INDEX = f"br_h3_res9_iic_{_formatted_version}.parquet"
 # ==============================================================================
 # 3. METADATA LOADING (INDICATORS)
 # ==============================================================================
-INDICATORS_PATH = BASE_DIR / "indicators.json"
+INDICATORS_PATH = BASE_DIR / "config" / "indicators.json"
 
 if INDICATORS_PATH.exists():
     with open(INDICATORS_PATH, 'r', encoding='utf-8') as f:
@@ -97,8 +97,11 @@ REPO_RESULTS_DIR = BASE_DIR / "data" / "outputs" / "results"
 REPO_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Prefixes used by pipeline to generate timestamped filenames
-IIC_FILE_PREFIX       = f"{FILE_PREFIX}_iic_{_formatted_version}"
-DASHBOARD_FILE_PREFIX = f"{FILE_PREFIX}_iic_{_formatted_version}_dashboard"
+IIC_FILE_PREFIX          = f"{FILE_PREFIX}_iic_{_formatted_version}"
+DASHBOARD_FILE_PREFIX    = f"{FILE_PREFIX}_iic_{_formatted_version}_dashboard"
+# Use .format(dim_abbr=...) to get the prefix for a specific dimension chunk,
+# e.g. DASHBOARD_DIM_FILE_PREFIX.format(dim_abbr='ip') → 'br_h3_iic_v2_0_dashboard_dim_ip'
+DASHBOARD_DIM_FILE_PREFIX = f"{FILE_PREFIX}_iic_{_formatted_version}_dashboard_dim_{{dim_abbr}}"
 
 FILES = {
     "h3": FILES_H3,

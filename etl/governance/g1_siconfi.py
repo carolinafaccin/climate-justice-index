@@ -1,3 +1,10 @@
+"""
+ETL: SICONFI municipal finance → Indicator g1 (environmental spending per capita).
+
+Input:  cfg.RAW_DIR / siconfi finbra_mun_despesas-por-funcao_{year}.csv (2015–2024)
+Output: cfg.FILES_H3["g1"] parquet
+"""
+
 import pandas as pd
 import numpy as np
 import sys
@@ -84,7 +91,10 @@ for year in TARGET_YEARS:
                 
                 # 6. Standardize IBGE code column name and keep only what matters
                 df_filtered = df_filtered.rename(columns={'cod.ibge': 'cd_mun'})
-                
+                if 'cd_mun' not in df_filtered.columns:
+                    print(f"  ⚠️ {year}: 'cod.ibge' not found after standardization — skipping year. Columns: {df_filtered.columns.tolist()}")
+                    continue
+
                 # Append to the main list
                 all_dfs.append(df_filtered[['cd_mun', 'valor_per_capita']])
                 print(f"  ✓ Processed: {year} | Rows extracted: {len(df_filtered)}")
@@ -124,7 +134,7 @@ if siconfi_len != h3_len:
 df_final = df_h3.merge(df_siconfi, on='cd_mun', how='left').fillna({col_abs: 0})
 
 n_matched = df_final[col_abs].gt(0).sum()
-print(f"   Hexágonos com investimento > 0: {n_matched:,} / {len(df_final):,}")
+print(f"   Hexagons with investment > 0: {n_matched:,} / {len(df_final):,}")
 
 # ==============================================================================
 # 7. OUTLIER TREATMENT AND NORMALIZATION

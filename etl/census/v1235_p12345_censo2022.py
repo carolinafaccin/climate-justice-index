@@ -1,3 +1,11 @@
+"""
+ETL: IBGE Census 2022 → Indicators p1–p5 (grupos prioritários) and v1–v5 (vulnerabilidade).
+
+Input:  cfg.RAW_DIR censo2022 CSVs (one per UF) + dasymetric base parquet (base_metadata)
+Output: one parquet per indicator written to cfg.CLEAN_DIR
+        (e.g. br_h3_p1_mulheres.parquet, br_h3_v1_renda.parquet, …)
+"""
+
 import pandas as pd
 import numpy as np
 import sys
@@ -64,7 +72,7 @@ for f in all_csvs:
         
         if 'cd_setor' not in df_temp.columns: continue
             
-        # BLINDAGEM: Pega apenas variáveis que ainda não estão no df_censo
+        # Guard: only extract variables not already present in df_censo
         cols_already_have = df_censo.columns.tolist()
         vars_to_extract = [c for c in REQUIRED_RAW_VARS if c in df_temp.columns and c not in cols_already_have]
         
@@ -74,16 +82,16 @@ for f in all_csvs:
             print(f"  OK: {f.name} ({len(vars_to_extract)} new variables)")
                 
     except Exception as e:
-        print(f"  ERRO: {f.name}: {e}")
+        print(f"  ERROR: {f.name}: {e}")
 
-# v06004 usa vírgula como separador decimal no arquivo do IBGE — converte antes do merge
-# v06004_v06001 = produto usado no numerador da média ponderada de renda: Σ(renda×responsáveis×peso)/Σ(responsáveis×peso)
+# v06004 uses comma as decimal separator in IBGE files — convert before merge
+# v06004_v06001 = product used in weighted income mean numerator: Σ(income×heads×weight)/Σ(heads×weight)
 if 'v06004' in df_censo.columns:
     df_censo['v06004'] = pd.to_numeric(df_censo['v06004'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
     if 'v06001' in df_censo.columns:
         df_censo['v06004_v06001'] = df_censo['v06004'] * df_censo['v06001']
-    # peso_renda: setores com renda média <= 1212 têm peso 1.0; acima, o peso é inversamente proporcional.
-    # Setores sem renda registrada (v06004=0) recebem peso 1.0 (máxima vulnerabilidade).
+    # peso_renda: sectors with mean income <= 1212 get weight 1.0; above that, weight is inversely proportional.
+    # Sectors with no registered income (v06004=0) receive weight 1.0 (maximum vulnerability).
     peso_renda = np.where(df_censo['v06004'] > 0, np.minimum(1.0, 1212.0 / df_censo['v06004']), 1.0)
     for dst, src in INCOME_WEIGHTED_SRC.items():
         if src in df_censo.columns:
@@ -102,7 +110,7 @@ df_h3['cd_setor'] = df_h3['cd_setor'].astype(str)
 
 df_merged = pd.merge(df_h3[['h3_id', 'cd_setor', 'peso_dom']], df_censo, on='cd_setor', how='inner')
 
-# Identifica todas as colunas numéricas que precisam de peso (raw + computed)
+# Identify all numeric columns that need weighting (raw + computed)
 _computed = {"v06004_v06001"} | set(INCOME_WEIGHTED_SRC.keys())
 columns_to_weight = [c for c in df_merged.columns if c in REQUIRED_RAW_VARS or c in _computed]
 
@@ -111,7 +119,7 @@ for col in columns_to_weight:
     df_merged[col] = df_merged[col] * df_merged['peso_dom']
 
 print("3/4 - Aggregating values per H3 Hexagon...")
-# LINHA ADICIONADA: Sem isso a Seção 6 quebra
+# Per-hexagon aggregation required before the indicator loop (Section 6) iterates over columns
 df_hex = df_merged.groupby('h3_id')[columns_to_weight].sum().reset_index()
 
 # ==============================================================================
@@ -126,7 +134,7 @@ for ind_key, logic in CENSUS_LOGIC.items():
         
     col_abs = col_norm.replace('_norm', '_abs')
     
-    # Razão
+    # Ratio
     num = df_hex[[c for c in logic['num_cols'] if c in df_hex.columns]].sum(axis=1)
     den = df_hex[[c for c in logic['den_cols'] if c in df_hex.columns]].sum(axis=1)
 
@@ -142,7 +150,7 @@ for ind_key, logic in CENSUS_LOGIC.items():
     if logic.get("cap_abs"):
         abs_val = abs_val.clip(upper=float(logic["cap_abs"]))
 
-    # Normalização (com inversão opcional para indicadores onde alto = menos vulnerável)
+    # Normalise (with optional inversion for indicators where high = less vulnerable)
     norm_val = utils.normalize_minmax(abs_val, winsorize=True)
     if logic.get("invert_norm", False):
         norm_val = 1.0 - norm_val

@@ -1,3 +1,10 @@
+"""
+ETL: INPE fire hotspot data → Indicator e5 (wildfire / queimadas exposure).
+
+Input:  cfg.RAW_DIR INPE annual shapefiles or CSVs with fire hotspot coordinates
+Output: cfg.FILES_H3["e5"] parquet
+"""
+
 import pandas as pd
 import numpy as np
 import h3
@@ -96,7 +103,7 @@ def main():
     df_agg = exposure_count.reset_index()
     df_agg.columns = ["h3_id", "anos_expostos"]
 
-    # e5_abs = fraction of years exposed (0–1), Opção B (média anual)
+    # e5_abs = fraction of years exposed (0–1); annual mean approach
     df_agg[col_e5_abs]  = df_agg["anos_expostos"] / n_years
     df_agg[col_e5_norm] = utils.normalize_minmax(df_agg[col_e5_abs], winsorize=True)
 

@@ -1,25 +1,21 @@
+"""
+ETL: CNEFE 2022 household data → dasymetric base parquet (base_metadata).
+
+Distributes census-tract household counts across H3 hexagons using dasymetric
+weighting.  The resulting peso_dom column represents the fraction of a census
+tract's households that fall within each hexagon:
+
+    HexagonValue = TractValue × peso_dom
+
+Input:  cfg.RAW_DIR / h3_past / br_h3_res9_v1.parquet  (H3↔sector grid)
+        cfg.RAW_DIR / h3_past / chunks_uf_cnefe_domicilios / *.parquet  (CNEFE)
+Output: cfg.FILES_H3["base_metadata"]  (one row per inhabited hexagon)
+"""
+
 import pandas as pd
+import numpy as np
 import sys
 from pathlib import Path
-
-"""
-==============================================================================
-DASYMETRIC INTERPOLATION METHOD
-==============================================================================
-
-The column `peso_dom` represents the proportion of households from the census 
-tract that are located within that specific hexagon.
-
-To analyze the 2022 Census variables per hexagon, the analysis formula is:
-HexagonValue = TractValue * peso_dom
-
-Example:
-If `Tract X` has 1000 households, and `Hexagon A` (located inside `Tract X`) 
-has a `peso_dom` of 0.15, the calculation will be: 
-1000 * 0.15 = 150. 
-This means there are an estimated 150 households in Hexagon A.
-==============================================================================
-"""
 
 # ==============================================================================
 # 1. ENVIRONMENT CONFIGURATION
@@ -82,8 +78,8 @@ df_final['peso_dom'] = df_final['qtd_dom'] / df_final['total_dom_setor']
 # ==============================================================================
 # 6. FINAL CLEANING AND EXPORT
 # ==============================================================================
-# If total_dom_setor is 0 (avoids division by zero), we fill weight with 0
-df_final['peso_dom'] = df_final['peso_dom'].fillna(0)
+# Division by zero when total_dom_setor=0 produces inf, not NaN; replace both.
+df_final['peso_dom'] = df_final['peso_dom'].replace([np.inf, -np.inf], 0).fillna(0)
 df_final = df_final.drop(columns=['total_dom_setor'])
 
 # Remove hexagons with 0 households

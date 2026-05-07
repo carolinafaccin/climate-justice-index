@@ -1,3 +1,10 @@
+"""
+ETL: Copernicus DEM / GEE → Indicator e3 (sea-level rise exposure).
+
+Input:  cfg.RAW_DIR state-level CSVs with columns h3_id, risco_slr, qtd_dom
+Output: cfg.FILES_H3["e3"] parquet
+"""
+
 import pandas as pd
 import numpy as np
 import sys
@@ -115,7 +122,7 @@ def _write_diagnostic(df_all, df_final, csv_files):
         vc = df_all["risco_slr"].value_counts().sort_index()
         for v, c in vc.items():
             f.write(f"  risco_slr={v}: {c:,} hexagons\n")
-        f.write(f"\n  Total domicílios em risco: {int(df_all.loc[df_all['risco_slr'] > 0, 'qtd_dom'].sum()):,}\n\n")
+        f.write(f"\n  Total households at risk: {int(df_all.loc[df_all['risco_slr'] > 0, 'qtd_dom'].sum()):,}\n\n")
 
         for col in [col_e3_abs, col_e3_norm]:
             s = df_final[col]

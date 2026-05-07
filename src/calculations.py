@@ -20,6 +20,15 @@ def _nanmean_cols(df: pd.DataFrame, cols: list) -> pd.Series:
 
 
 def calculate_simple_iic(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute per-dimension averages and IIC final score in-place on df.
+
+    For each dimension in cfg.DIMENSION_META:
+      - Row-wise nanmean across the dimension's indicator columns that are present in df.
+      - If invert=True (IG), the dimension average is inverted: 1 − avg.
+      - Dimensions with no indicator columns present are skipped with a warning.
+    IIC final = nanmean of the dimension columns produced above.
+    Returns df with new columns: ip, iv, ie, ig, iic_final.
+    """
     logging.info("Calculating Climate Injustice Index via simple mean...")
 
     # 1. Index per dimension (with IG inversion)
@@ -28,7 +37,10 @@ def calculate_simple_iic(df: pd.DataFrame) -> pd.DataFrame:
         indicator_keys = cfg.DIMENSIONS[dim_name]
         existing = [k for k in indicator_keys if k in df.columns]
         if not existing:
-            logging.warning(f"Dimension '{dim_name}': no indicators found.")
+            logging.warning(
+                f"Dimension '{dim_name}' ({dim_meta['abbr']}): no indicator columns found in df — "
+                "dimension will be absent from iic_final. Check that ETL scripts ran successfully."
+            )
             continue
 
         abbr = dim_meta['abbr'].lower()   # "ip", "iv", "ie", "ig"

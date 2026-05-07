@@ -1,3 +1,10 @@
+"""
+ETL: MIDR ICM register → Indicator g7 (disaster-risk family registry).
+
+Input:  cfg.RAW_DIR / midr/icm CSV with cod_mun + binary ICM flag
+Output: cfg.FILES_H3["g7"] parquet
+"""
+
 import pandas as pd
 import sys
 from pathlib import Path

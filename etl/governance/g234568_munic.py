@@ -1,3 +1,10 @@
+"""
+ETL: IBGE MUNIC survey → Indicators g2–g6, g8 (municipal governance capacity).
+
+Input:  per-indicator CSV files referenced in cfg.INDICATORS[key]["source"]["file"]
+Output: one parquet per indicator written to cfg.CLEAN_DIR
+"""
+
 import pandas as pd
 import sys
 from pathlib import Path

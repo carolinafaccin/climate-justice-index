@@ -27,47 +27,39 @@ def validate_inputs(files_dict: dict) -> list:
     return missing
 
 
-def consolidate_inputs(files_dict: dict, join_key: str) -> pd.DataFrame:
-    df_master = None
-    # Columns we want to bring ONLY from the base_metadata file
-    # Note: We keep these column names in Portuguese because they reflect the actual data columns
+def _load_base_metadata(path: Path, join_key: str) -> pd.DataFrame:
+    """Load the base H3 parquet, select metadata columns, deduplicate to one row per hexagon."""
     METADATA_COLS = ['cd_setor', 'cd_mun', 'nm_mun', 'cd_uf', 'nm_uf', 'sigla_uf', 'area_km2', 'peso_dom', 'qtd_dom']
+    logging.info("Loading metadata base...")
+    df = pd.read_parquet(path)
+    existing_cols = [join_key] + [c for c in METADATA_COLS if c in df.columns]
+    df = df[existing_cols]
+    n_before = len(df)
+    df = df.drop_duplicates(subset=[join_key])
+    logging.info(f"Base deduplicated: {n_before:,} rows → {len(df):,} unique hexagons.")
+    return df
 
-    # 1. First, we load the metadata base to ensure it acts as df_master
-    path_base = files_dict.get("base_metadata")
-    if path_base and path_base.is_file():
-        logging.info("Loading metadata base...")
-        df_master = pd.read_parquet(path_base)
-        # Keep only join_key + existing metadata columns
-        existing_cols = [join_key] + [c for c in METADATA_COLS if c in df_master.columns]
-        df_master = df_master[existing_cols]
-        # Base has one row per (h3_id, census sector) pair — deduplicate to one row per hexagon
-        n_before = len(df_master)
-        df_master = df_master.drop_duplicates(subset=[join_key])
-        logging.info(f"Base deduplicated: {n_before:,} rows → {len(df_master):,} unique hexagons.")
-    else:
-        logging.error("base_metadata file not found! Merge will fail.")
-        return None
 
-    # 2. Now we loop through the indicators (e1, v1, etc.)
+def _merge_indicators(df_master: pd.DataFrame, files_dict: dict, join_key: str) -> pd.DataFrame:
+    """Left-join each indicator parquet onto df_master, deduplicating before each merge."""
     for indicator_key, path in files_dict.items():
-        if indicator_key == "base_metadata": 
-            continue # Skip since we already loaded it
-        
+        if indicator_key == "base_metadata":
+            continue
+
         if not Path(path).is_file():
             logging.warning(f"File not found for {indicator_key}: {path}")
             continue
-            
-        # READ THE FILE FIRST
+
         df_temp = pd.read_parquet(path)
-        # THEN LOG THE SHAPE
         logging.info(f"Integrating {indicator_key} | Original shape: {df_temp.shape}")
-        
-        # Gets the actual column name from config (e.g., 'g1' -> 'g1_inv_norm')
+
         actual_column_name = cfg.COLUMN_MAP.get(indicator_key)
-        
+
+        if actual_column_name is None:
+            logging.warning(f"Indicator '{indicator_key}' has no entry in COLUMN_MAP — skipped.")
+            continue
+
         if actual_column_name in df_temp.columns:
-            # Select only the ID and the data column, renaming it to the indicator_key (e1, v1...)
             df_temp = df_temp[[join_key, actual_column_name]].rename(columns={actual_column_name: indicator_key})
 
             # Deduplicate by h3_id before merging to prevent row fan-out.
@@ -81,17 +73,25 @@ def consolidate_inputs(files_dict: dict, join_key: str) -> pd.DataFrame:
                     f"before merge ({n_before:,} → {len(df_temp):,} unique h3_ids)."
                 )
 
-            # Merge left: keep all H3 from the base and bring the data if it exists
             df_master = pd.merge(df_master, df_temp, on=join_key, how='left')
-            
-            # Log: Show how the main file looks after merging the new column
             logging.debug(f"Shape after merging {indicator_key}: {df_master.shape}")
         else:
             logging.warning(f"Column {actual_column_name} not found in {path.name}")
-            
+
     return df_master
 
+
+def consolidate_inputs(files_dict: dict, join_key: str) -> pd.DataFrame:
+    """Load base H3 metadata and left-join all indicator files. Returns one row per hexagon."""
+    path_base = files_dict.get("base_metadata")
+    if not path_base or not path_base.is_file():
+        logging.error("base_metadata file not found! Merge will fail.")
+        return None
+    df_master = _load_base_metadata(path_base, join_key)
+    return _merge_indicators(df_master, files_dict, join_key)
+
 def run_h3():
+    """Run the full H3 pipeline: validate → consolidate → calculate → save outputs."""
     logging.info("=== STARTING PIPELINE: H3 GRID (SIMPLIFIED) ===")
 
     # 0. Validate inputs
@@ -150,9 +150,53 @@ def run_h3():
     df_slim.to_parquet(path_dashboard, index=False, compression='gzip')
     logging.info(f"Dashboard parquet saved: {path_dashboard.name}  ({path_dashboard.stat().st_size / 1e6:.1f} MB)")
 
+    # 6. Save per-dimension indicator files for hexagon-level indicator maps
+    _save_dimension_parquets(df_calculated, ts)
+
     logging.info("Process completed successfully!")
 
+
+def _save_dimension_parquets(df: pd.DataFrame, ts: str) -> None:
+    """Save one parquet per dimension with h3_id + normalized indicator values.
+
+    Files are split into chunks of at most MAX_COLS_PER_FILE indicators so that
+    no single file exceeds GitHub's 100 MB limit (ig has 8 indicators).
+    """
+    MAX_COLS_PER_FILE = 6
+    out_dir = cfg.FILES['output']['repo_results_dir']
+
+    # Build {dimension: [indicator_keys_present_in_df]}
+    dim_indicators: dict[str, list[str]] = {}
+    for key, meta in cfg.INDICATORS.items():
+        if key in df.columns:
+            dim_indicators.setdefault(meta['dimension'], []).append(key)
+
+    for dim, indicators in dim_indicators.items():
+        abbr = cfg.DIMENSION_META[dim]['abbr'].lower()  # e.g. 'ip', 'iv', 'ie', 'ig'
+
+        # Chunk into groups so each file stays under the GitHub limit
+        chunks = [indicators[i:i + MAX_COLS_PER_FILE] for i in range(0, len(indicators), MAX_COLS_PER_FILE)]
+
+        for chunk_idx, chunk_cols in enumerate(chunks, start=1):
+            file_abbr = abbr if len(chunks) == 1 else f"{abbr}_{chunk_idx:02d}"
+            prefix = cfg.DASHBOARD_DIM_FILE_PREFIX.format(dim_abbr=file_abbr)
+            path = out_dir / f"{prefix}_{ts}.parquet"
+
+            df_dim = df[[cfg.COL_ID_H3] + chunk_cols].copy()
+            for col in chunk_cols:
+                df_dim[col] = df_dim[col].astype('float32')
+
+            df_dim.to_parquet(path, index=False, compression='gzip')
+            size_mb = path.stat().st_size / 1e6
+            logging.info(f"Dimension parquet [{file_abbr}] saved: {path.name}  ({size_mb:.1f} MB)")
+            if size_mb > 95:
+                logging.warning(
+                    f"  [{file_abbr}] {size_mb:.1f} MB — close to GitHub's 100 MB limit. "
+                    "Reduce MAX_COLS_PER_FILE or use Git LFS."
+                )
+
 def run():
+    """Entry point called by run.py; wraps run_h3 with top-level error handling."""
     try:
         run_h3()
     except Exception as e:

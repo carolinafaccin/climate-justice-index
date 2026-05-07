@@ -143,8 +143,6 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-venv_win/
-venv_mac/
 
 # Spyder project settings
 .spyderproject
@@ -209,13 +207,13 @@ marimo/_lsp/
 __marimo__/
 
 # Config files
-config.local.json
+config/config.local.json
 data/
 run_pipeline.bat
 
 # Folders
 __pycache__/
-etl/archive/
+archive/
 logs/
-diagnose/
+archive/
 .claude/

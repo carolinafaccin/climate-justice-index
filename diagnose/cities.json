@@ -1,0 +1,8 @@
+{
+  "cities": [
+    {"nm_mun": "Porto Alegre",       "nm_uf": "Rio Grande do Sul"},
+    {"nm_mun": "Santa Cruz do Sul",  "nm_uf": "Rio Grande do Sul"},
+    {"nm_mun": "Rio de Janeiro",     "nm_uf": "Rio de Janeiro"},
+    {"nm_mun": "São Paulo",          "nm_uf": "São Paulo"}
+  ]
+}
