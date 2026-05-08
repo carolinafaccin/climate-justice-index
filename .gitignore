@@ -217,3 +217,5 @@ archive/
 logs/
 archive/
 .claude/
+manuscript/
+.DS_Store

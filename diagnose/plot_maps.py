@@ -1,11 +1,15 @@
 """
 H3 maps of IIC v2.0 by municipality.
 
-Reads cities from diagnose/cities.json and generates for each one:
-  - IIC final + 4 sub-indices (5 discrete colour classes)
-  - Individual indicators per dimension
+Generates one PNG per map for each city in diagnose/cities.json:
+  - 1 map for the final IIC index
+  - 4 maps for sub-indices (IP, IV, IE, IG)
+  - 23 maps for individual indicators
 
-Overlays the municipal boundary from the IBGE 2024 mesh (municipios.gpkg).
+Each map:
+  - Is zoomed to the municipality boundary (from IBGE 2024 mesh, EPSG:5880)
+  - Overlays the municipal boundary line
+  - Includes a scale bar (km) and north arrow
 
 Outputs: cfg.FIGURES_DIR / "maps" / map_*_{ts}.png
 """
@@ -21,7 +25,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
 from matplotlib.colors import BoundaryNorm, ListedColormap
-import matplotlib.gridspec as mgridspec
+from matplotlib.patches import Rectangle
 import geopandas as gpd
 from pathlib import Path
 
@@ -36,8 +40,9 @@ import utils as diag_utils
 # PATHS AND PARAMETERS
 # ==============================================================================
 DPI          = 150
+FIG_SIZE     = (9, 9)
 CLASS_BOUNDS = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
-CLASS_LABELS = ["0.0-0.2", "0.2-0.4", "0.4-0.6", "0.6-0.8", "0.8-1.0"]
+CLASS_LABELS = ["0.0–0.2", "0.2–0.4", "0.4–0.6", "0.6–0.8", "0.8–1.0"]
 
 MAPS_DIR = cfg.FIGURES_DIR / "maps"
 MAPS_DIR.mkdir(parents=True, exist_ok=True)
@@ -47,13 +52,18 @@ MUNICIPALITIES_GPKG = cfg.RAW_DIR / "ibge" / "malha_municipal" / "2024" / "munic
 with open(SCRIPT_DIR / "cities.json", encoding="utf-8") as _f:
     CITIES = json.load(_f).get("cities", [])
 
+# Most recent final IIC parquet (exclude dashboard variants)
 _results = sorted(
-    cfg.FILES["output"]["results_dir"].glob("br_h3_iic_v2_0_*.parquet"),
-    key=lambda p: p.stat().st_mtime, reverse=True,
+    [
+        p for p in cfg.RESULTS_DIR.glob("br_h3_iic_v2_0_*.parquet")
+        if "dashboard" not in p.name
+    ],
+    key=lambda p: p.stat().st_mtime,
+    reverse=True,
 )
 if not _results:
     raise FileNotFoundError(
-        f"No results found in:\n  {cfg.FILES['output']['results_dir']}\n"
+        f"No results found in:\n  {cfg.RESULTS_DIR}\n"
         "Run `python run.py` first to generate the results."
     )
 RESULTS_FILE = _results[0]
@@ -63,6 +73,7 @@ FILE_TS = _ts_match.group(1) if _ts_match else RESULTS_FILE.stem
 
 ALL_INDICATORS = diag_utils.ALL_INDICATOR_KEYS
 DIMS           = diag_utils.DIMS
+
 
 # ==============================================================================
 # MUNICIPAL BOUNDARY MESH
@@ -102,10 +113,11 @@ def _get_municipality_boundary(cd_mun) -> gpd.GeoDataFrame | None:
 
 
 # ==============================================================================
-# MAP HELPERS
+# COLOR HELPERS
 # ==============================================================================
 
 def _class_colors_from_base(base_color: str) -> list:
+    """Build 5-step sequential palette from near-white to the given base colour."""
     light = np.array(mcolors.to_rgba("#f7f7f7"))
     dark  = np.array(mcolors.to_rgba(base_color))
     return [tuple(light + (dark - light) * i / 4) for i in range(5)]
@@ -116,49 +128,156 @@ def _class_colors_from_cmap(cmap_name: str) -> list:
     return [cmap(i / 4) for i in range(5)]
 
 
-def _plot_classified_panel(gdf, col, ax, title, class_colors,
-                            show_legend: bool = False,
-                            boundary: gpd.GeoDataFrame = None) -> None:
+# ==============================================================================
+# MAP DECORATION: EXTENT, SCALE BAR, NORTH ARROW, LEGEND
+# ==============================================================================
+
+def _set_extent(ax, boundary: gpd.GeoDataFrame, buffer_frac: float = 0.05) -> None:
+    """Zoom the axis to the municipality boundary plus a proportional buffer."""
+    minx, miny, maxx, maxy = boundary.total_bounds
+    bx = (maxx - minx) * buffer_frac
+    by = (maxy - miny) * buffer_frac
+    ax.set_xlim(minx - bx, maxx + bx)
+    ax.set_ylim(miny - by, maxy + by)
+
+
+def _add_scale_bar(ax) -> None:
+    """Draw a two-tone (black/white) scale bar with km labels at the lower-left."""
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    lat_c = (y0 + y1) / 2
+
+    # Convert degrees-longitude to km at the central latitude
+    km_per_deg = np.cos(np.radians(lat_c)) * 111.32
+    map_w_km   = (x1 - x0) * km_per_deg
+
+    # Pick a "nice" bar length ~20% of the map width
+    nice = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500]
+    bar_km  = min(nice, key=lambda d: abs(d - map_w_km * 0.20))
+    bar_deg = bar_km / km_per_deg
+
+    # Anchor: lower-left with 5% margin
+    mx = (x1 - x0) * 0.05
+    my = (y1 - y0) * 0.05
+    bx0 = x0 + mx
+    by0 = y0 + my
+    bar_h = (y1 - y0) * 0.012   # visual height of the bar
+
+    # Left half (black) and right half (white with black border)
+    ax.add_patch(Rectangle(
+        (bx0,              by0), bar_deg / 2, bar_h,
+        facecolor="black", edgecolor="black", lw=0.5, zorder=20, transform=ax.transData,
+    ))
+    ax.add_patch(Rectangle(
+        (bx0 + bar_deg / 2, by0), bar_deg / 2, bar_h,
+        facecolor="white", edgecolor="black", lw=0.5, zorder=20, transform=ax.transData,
+    ))
+    # Outer border
+    ax.add_patch(Rectangle(
+        (bx0, by0), bar_deg, bar_h,
+        facecolor="none", edgecolor="black", lw=0.9, zorder=21, transform=ax.transData,
+    ))
+
+    # Labels above the bar
+    ty = by0 + bar_h * 1.4
+    fs = 6.5
+    ax.text(bx0,            ty, "0",              ha="center", va="bottom",
+            fontsize=fs, zorder=22, transform=ax.transData)
+    ax.text(bx0 + bar_deg,  ty, f"{bar_km:.4g} km", ha="center", va="bottom",
+            fontsize=fs, zorder=22, transform=ax.transData)
+
+
+def _add_north_arrow(ax) -> None:
+    """Draw a north arrow (filled arrowhead + 'N' label) in the upper-right corner."""
+    # All coordinates in axes fraction (0–1)
+    x, y_base, y_tip = 0.92, 0.84, 0.93
+
+    ax.annotate(
+        "", xy=(x, y_tip), xytext=(x, y_base),
+        xycoords="axes fraction", textcoords="axes fraction",
+        arrowprops=dict(
+            arrowstyle="-|>",
+            color="black",
+            lw=1.6,
+            mutation_scale=16,
+        ),
+        zorder=30,
+    )
+    ax.text(
+        x, y_tip + 0.025, "N",
+        ha="center", va="bottom",
+        fontsize=10, fontweight="bold",
+        transform=ax.transAxes, zorder=31,
+    )
+
+
+def _add_legend(ax, class_colors: list) -> None:
+    """Compact classified-colour legend at the lower-right of the axis."""
+    handles = [
+        mpatches.Patch(facecolor=class_colors[i], edgecolor="#777777",
+                       lw=0.3, label=CLASS_LABELS[i])
+        for i in range(len(class_colors))
+    ]
+    handles.append(
+        mpatches.Patch(facecolor="#cccccc", edgecolor="#777777", lw=0.3, label="Sem dado")
+    )
+    ax.legend(
+        handles=handles, loc="lower right", fontsize=6.5,
+        framealpha=0.88, handlelength=1.2, handleheight=1.0,
+        borderpad=0.5, labelspacing=0.3,
+    )
+
+
+# ==============================================================================
+# CORE SINGLE-MAP RENDERER
+# ==============================================================================
+
+def _plot_single_map(
+    gdf: gpd.GeoDataFrame,
+    col: str,
+    title: str,
+    subtitle: str,
+    class_colors: list,
+    boundary: gpd.GeoDataFrame | None,
+    out_name: str,
+) -> None:
+    """Render one variable as a standalone classified map and save to PNG."""
     listed = ListedColormap(class_colors)
     norm   = BoundaryNorm(CLASS_BOUNDS, ncolors=len(class_colors), clip=True)
 
-    gdf_valid = gdf[gdf[col].notna()]
+    fig, ax = plt.subplots(figsize=FIG_SIZE)
+
+    # Plot NA hexagons first (grey), then valid values
     gdf_na    = gdf[gdf[col].isna()]
+    gdf_valid = gdf[gdf[col].notna()]
     if not gdf_na.empty:
         gdf_na.plot(color="#cccccc", ax=ax, linewidth=0)
     if not gdf_valid.empty:
         gdf_valid.plot(column=col, cmap=listed, norm=norm, ax=ax, linewidth=0)
 
+    # Municipal boundary line + extent clipping
     if boundary is not None and not boundary.empty:
-        boundary.boundary.plot(ax=ax, color="#1a1a1a", linewidth=1.2, zorder=10)
+        boundary.boundary.plot(ax=ax, color="#1a1a1a", linewidth=1.4, zorder=10)
+        _set_extent(ax, boundary)
 
-    if show_legend:
-        patches = [
-            mpatches.Patch(facecolor=class_colors[i], edgecolor="#999999",
-                           lw=0.3, label=CLASS_LABELS[i])
-            for i in range(len(class_colors))
-        ]
-        ax.legend(handles=patches, loc="lower left", fontsize=6,
-                  framealpha=0.9, handlelength=1.2, handleheight=1.0,
-                  borderpad=0.5, labelspacing=0.3)
+    # Decorations (scale bar must come after extent is set)
+    _add_scale_bar(ax)
+    _add_north_arrow(ax)
+    _add_legend(ax, class_colors)
 
-    ax.set_title(title, fontsize=9, fontweight="bold", pad=4)
+    ax.set_title(subtitle, fontsize=9, pad=4)
     ax.axis("off")
+    fig.suptitle(title, fontsize=12, fontweight="bold", y=1.005)
+
+    path = MAPS_DIR / f"{out_name}_{FILE_TS}.png"
+    fig.savefig(path, dpi=DPI, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Saved: {path.name}")
 
 
-def _shared_legend(fig, class_colors, y_anchor: float = 0.01) -> None:
-    patches = [
-        mpatches.Patch(facecolor=class_colors[i], edgecolor="#999999",
-                       lw=0.3, label=CLASS_LABELS[i])
-        for i in range(len(class_colors))
-    ]
-    fig.legend(handles=patches, loc="lower center", ncol=5, fontsize=8,
-               bbox_to_anchor=(0.5, y_anchor), framealpha=0.9,
-               handlelength=1.5, handleheight=1.0)
-
-
-_build_gdf = diag_utils.build_gdf
-
+# ==============================================================================
+# UTILITIES
+# ==============================================================================
 
 def _city_slug(nm_mun: str, nm_uf: str) -> str:
     import unicodedata
@@ -166,11 +285,7 @@ def _city_slug(nm_mun: str, nm_uf: str) -> str:
     return f"{slug.lower().replace(' ', '_')}_{nm_uf.split()[-1].lower()}"
 
 
-def _save_map(fig: plt.Figure, name: str) -> None:
-    path = MAPS_DIR / f"{name}_{FILE_TS}.png"
-    fig.savefig(path, dpi=DPI, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  Saved: {path.name}")
+_build_gdf = diag_utils.build_gdf
 
 
 # ==============================================================================
@@ -178,78 +293,77 @@ def _save_map(fig: plt.Figure, name: str) -> None:
 # ==============================================================================
 
 def load_city_data(nm_mun: str, nm_uf: str) -> pd.DataFrame:
-    cols = (["h3_id", "nm_mun", "nm_uf", "cd_mun", "iic_final",
-             "ip", "iv", "ie", "ig"] + ALL_INDICATORS)
-    df     = pd.read_parquet(RESULTS_FILE, columns=cols)
-    mask   = (df["nm_mun"] == nm_mun) & (df["nm_uf"] == nm_uf)
-    result = df[mask].drop_duplicates(subset="h3_id").reset_index(drop=True)
-    print(f"  {nm_mun}/{nm_uf}: {len(result):,} hexagons loaded.")
-    return result
-
-
-# ==============================================================================
-# FIGURES
-# ==============================================================================
-
-def fig_map_city(nm_mun: str, nm_uf: str, gdf: gpd.GeoDataFrame,
-                 boundary: gpd.GeoDataFrame = None) -> None:
-    PLOTS = [
-        ("iic_final", "IIC Final",               _class_colors_from_cmap("RdYlGn_r")),
-        ("ip",        "IP - Grupos Prioritários", _class_colors_from_base(DIMS["ip"]["color"])),
-        ("iv",        "IV - Vulnerabilidade",     _class_colors_from_base(DIMS["iv"]["color"])),
-        ("ie",        "IE - Exposição",           _class_colors_from_base(DIMS["ie"]["color"])),
-        ("ig",        "IG - Gestão Municipal",    _class_colors_from_base(DIMS["ig"]["color"])),
-    ]
-
-    fig = plt.figure(figsize=(22, 13))
-    gs  = mgridspec.GridSpec(2, 3, figure=fig, hspace=0.18, wspace=0.06)
-    ax_main  = fig.add_subplot(gs[:, 0])
-    axes_sub = [fig.add_subplot(gs[r, c]) for r, c in [(0,1),(0,2),(1,1),(1,2)]]
-
-    for ax, (col, title, class_colors) in zip([ax_main] + axes_sub, PLOTS):
-        _plot_classified_panel(gdf, col, ax, title, class_colors,
-                               show_legend=True, boundary=boundary)
-
-    fig.suptitle(
-        f"{nm_mun} / {nm_uf}\n"
-        f"H3 Spatial Distribution (res. 9) — IIC and Sub-indices",
-        fontsize=14, fontweight="bold", y=1.01,
+    cols = (
+        ["h3_id", "nm_mun", "nm_uf", "cd_mun", "iic_final", "ip", "iv", "ie", "ig"]
+        + ALL_INDICATORS
     )
-    _save_map(fig, f"map_{_city_slug(nm_mun, nm_uf)}")
+    df   = pd.read_parquet(RESULTS_FILE, columns=cols)
+    mask = (df["nm_mun"] == nm_mun) & (df["nm_uf"] == nm_uf)
+    out  = df[mask].drop_duplicates(subset="h3_id").reset_index(drop=True)
+    print(f"  {nm_mun}/{nm_uf}: {len(out):,} hexagons loaded.")
+    return out
 
 
-def fig_map_city_indicators(nm_mun: str, nm_uf: str,
-                             gdf: gpd.GeoDataFrame,
-                             boundary: gpd.GeoDataFrame = None) -> None:
+# ==============================================================================
+# PER-CITY MAP GENERATION
+# ==============================================================================
+
+def generate_city_maps(
+    nm_mun: str,
+    nm_uf: str,
+    gdf: gpd.GeoDataFrame,
+    boundary: gpd.GeoDataFrame | None,
+) -> None:
+    """Generate all 28 individual maps for one city."""
+    slug  = _city_slug(nm_mun, nm_uf)
+    label = f"{nm_mun} / {nm_uf}"
+
+    # --- 1. Final index ---
+    _plot_single_map(
+        gdf, "iic_final",
+        title=f"{label} — IIC Final",
+        subtitle="Índice de Injustiça Climática  |  5 classes (0–1)",
+        class_colors=_class_colors_from_cmap("RdYlGn_r"),
+        boundary=boundary,
+        out_name=f"map_{slug}_iic_final",
+    )
+
+    # --- 2. Sub-indices (one map each) ---
+    sub_labels = {
+        "ip": "IP – Grupos Prioritários",
+        "iv": "IV – Vulnerabilidade",
+        "ie": "IE – Exposição a Riscos Climáticos",
+        "ig": "IG – Gestão Municipal",
+    }
     for dim_key, meta in DIMS.items():
-        indicators   = meta["indicators"]
-        class_colors = _class_colors_from_base(meta["color"])
-        n_cols = 3
-        n_rows = (len(indicators) + n_cols - 1) // n_cols
-
-        fig, axes = plt.subplots(n_rows, n_cols,
-                                 figsize=(n_cols * 5.5, n_rows * 5.5 + 0.8))
-        axes_flat = np.array(axes).flatten()
-
-        for i, ind_key in enumerate(indicators):
-            if ind_key not in gdf.columns:
-                axes_flat[i].set_visible(False)
-                continue
-            _plot_classified_panel(gdf, ind_key, axes_flat[i],
-                                   title=meta["ind_labels"][ind_key],
-                                   class_colors=class_colors, show_legend=False,
-                                   boundary=boundary)
-        for j in range(len(indicators), len(axes_flat)):
-            axes_flat[j].set_visible(False)
-
-        _shared_legend(fig, class_colors, y_anchor=0.01)
-        fig.suptitle(
-            f"{nm_mun} / {nm_uf}  —  {meta['label']}\n"
-            f"Individual indicators (5 classes, 0–1)",
-            fontsize=12, fontweight="bold",
+        col = dim_key
+        if col not in gdf.columns:
+            print(f"  [SKIP] Sub-index '{col}' not in data.")
+            continue
+        _plot_single_map(
+            gdf, col,
+            title=f"{label} — {sub_labels.get(col, meta['label'])}",
+            subtitle=f"Sub-índice {col.upper()}  |  5 classes (0–1)",
+            class_colors=_class_colors_from_base(meta["color"]),
+            boundary=boundary,
+            out_name=f"map_{slug}_{col}",
         )
-        fig.tight_layout(rect=[0, 0.07, 1, 0.93])
-        _save_map(fig, f"map_{_city_slug(nm_mun, nm_uf)}_ind_{dim_key}")
+
+    # --- 3. Individual indicators (one map each) ---
+    for dim_key, meta in DIMS.items():
+        class_colors = _class_colors_from_base(meta["color"])
+        for ind_key in meta["indicators"]:
+            if ind_key not in gdf.columns:
+                print(f"  [SKIP] Indicator '{ind_key}' not in data.")
+                continue
+            _plot_single_map(
+                gdf, ind_key,
+                title=f"{label} — {meta['ind_labels'][ind_key]}",
+                subtitle=f"Indicador {ind_key.upper()}  |  5 classes (0–1)",
+                class_colors=class_colors,
+                boundary=boundary,
+                out_name=f"map_{slug}_{ind_key}",
+            )
 
 
 # ==============================================================================
@@ -257,12 +371,15 @@ def fig_map_city_indicators(nm_mun: str, nm_uf: str,
 # ==============================================================================
 
 def main():
+    n_maps_per_city = 1 + len(DIMS) + len(ALL_INDICATORS)
     print("=" * 60)
     print(f"IIC v2.0 Maps  |  {RESULTS_FILE.name}")
-    print(f"Timestamp: {FILE_TS}")
+    print(f"Timestamp     : {FILE_TS}")
+    print(f"Cities        : {len(CITIES)}")
+    print(f"Maps per city : {n_maps_per_city}  (1 index + 4 sub-indices + {len(ALL_INDICATORS)} indicators)")
+    print(f"Total expected: {len(CITIES) * n_maps_per_city}")
     print("=" * 60)
 
-    print(f"\nConfigured cities: {len(CITIES)}")
     for city in CITIES:
         nm_mun = city["nm_mun"]
         nm_uf  = city["nm_uf"]
@@ -280,11 +397,10 @@ def main():
         print(f"  Converting {len(city_df):,} hexagons to geometry...")
         gdf = _build_gdf(city_df)
 
-        fig_map_city(nm_mun, nm_uf, gdf, boundary=boundary)
-        fig_map_city_indicators(nm_mun, nm_uf, gdf, boundary=boundary)
+        generate_city_maps(nm_mun, nm_uf, gdf, boundary=boundary)
 
-    n_maps = len(list(MAPS_DIR.glob("*.png")))
-    print(f"\nDone! {n_maps} PNGs in {MAPS_DIR}")
+    n_saved = len(list(MAPS_DIR.glob("*.png")))
+    print(f"\nDone! {n_saved} total PNGs in:\n  {MAPS_DIR}")
 
 
 if __name__ == "__main__":
