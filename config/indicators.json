@@ -129,15 +129,6 @@
             ],
             "den_cols": ["v00001"]
           }
-        },
-        "v6": {
-          "name": "areas_verdes",
-          "abbr": "ver",
-          "display_name": "Cobertura vegetal",
-          "description": "Inverso da cobertura vegetal mediana (NDVI) do Landsat 8/9 (2020–2024): hexágonos com menor cobertura vegetal recebem maior vulnerabilidade",
-          "source": {
-            "dir": "gee/areas_verdes_ndvi"
-          }
         }
       }
     },
@@ -188,7 +179,7 @@
         "e5": {
           "name": "queimadas",
           "abbr": "que",
-          "display_name": "Queimadas",
+          "display_name": "Focos de queimadas",
           "description": "Percentual de domicílios em áreas com até 1 km de proximidade de focos de queimadas",
           "source": {
             "dir": "inpe/queimadas"
@@ -199,13 +190,13 @@
     "gestao_municipal": {
       "abbr": "IG",
       "name": "Índice de Gestão Municipal",
-      "display_name": "Gestão Municipal",
+      "display_name": "Capacidade de Gestão Municipal",
       "invert": true,
       "indicators": {
         "g1": {
           "name": "mun_investimento_despesas",
           "abbr": "inv",
-          "display_name": "Investimento ambiental",
+          "display_name": "Investimento",
           "description": "Despesas municipais per capita, entre 2015 e 2024, em gestão ambiental",
           "source": {
             "dir": "siconfi/t0"
@@ -214,7 +205,7 @@
         "g2": {
           "name": "mun_planejamento_contingencia",
           "abbr": "pla",
-          "display_name": "Plano de contingência",
+          "display_name": "Planejamento",
           "description": "Existência de Plano de Gerenciamento de Contingência",
           "source": {
             "file": "ibge/munic/t0/2023_saneamento/munic_2023_saneamento_drenagem.csv",
@@ -225,7 +216,7 @@
         "g3": {
           "name": "mun_participacao_nupdec",
           "abbr": "par",
-          "display_name": "Participação em NUPDECs",
+          "display_name": "Participação",
           "description": "Existência de Núcleos Comunitários de Proteção e Defesa Civil (Nupdec)",
           "source": {
             "file": "ibge/munic/t0/2020/munic_2020_gestao-de-riscos.csv",
@@ -236,7 +227,7 @@
         "g4": {
           "name": "mun_governanca_conselhos",
           "abbr": "gov",
-          "display_name": "Conselhos municipais",
+          "display_name": "Governança",
           "description": "Existência de Conselho Municipal de Meio Ambiente ou de Cidade/Desenvolvimento Urbano",
           "source": {
             "file": "ibge/munic/t0/2023_saneamento/munic_2023_saneamento_dados-gerais.csv",
@@ -247,7 +238,7 @@
         "g5": {
           "name": "mun_resposta_alerta",
           "abbr": "res",
-          "display_name": "Sistemas de alerta",
+          "display_name": "Resposta",
           "description": "Existência de sistemas de alerta de riscos",
           "source": {
             "file": "ibge/munic/t0/2023_saneamento/munic_2023_saneamento_drenagem.csv",
@@ -258,7 +249,7 @@
         "g6": {
           "name": "mun_informacao_mapeamento",
           "abbr": "map",
-          "display_name": "Mapeamento e zoneamento de risco",
+          "display_name": "Informação",
           "description": "Existência de mapeamento e zoneamento de áreas de risco",
           "source": {
             "file": "ibge/munic/t0/2023_saneamento/munic_2023_saneamento_drenagem.csv",
@@ -269,7 +260,7 @@
         "g7": {
           "name": "mun_reconhecimento_cadastro",
           "abbr": "rec",
-          "display_name": "Cadastro de famílias em risco",
+          "display_name": "Reconhecimento",
           "description": "Existência de cadastro ou identificação de famílias em áreas de risco",
           "source": {
             "dir": "midr/icm/2026/t1",
@@ -280,7 +271,7 @@
         "g8": {
           "name": "mun_reparacao_direitos",
           "abbr": "rep",
-          "display_name": "Políticas de direitos humanos",
+          "display_name": "Reparação",
           "description": "Quantidade de políticas ou programas na área dos direitos humanos",
           "source": {
             "file": "ibge/munic/t0/2023/munic_2023_direitos-humanos.csv",
