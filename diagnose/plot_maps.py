@@ -1,7 +1,7 @@
 """
 H3 maps of IIC v2.0 by municipality.
 
-Generates one PNG per map for each city in diagnose/cities.json:
+Generates one PNG per map for each city in config/cities.json:
   - 1 map for the final IIC index
   - 4 maps for sub-indices (IP, IV, IE, IG)
   - 23 maps for individual indicators
@@ -49,7 +49,7 @@ MAPS_DIR.mkdir(parents=True, exist_ok=True)
 
 MUNICIPALITIES_GPKG = cfg.RAW_DIR / "ibge" / "malha_municipal" / "2024" / "municipios.gpkg"
 
-with open(SCRIPT_DIR / "cities.json", encoding="utf-8") as _f:
+with open(PROJECT_ROOT / "config" / "cities.json", encoding="utf-8") as _f:
     CITIES = json.load(_f).get("cities", [])
 
 # Most recent final IIC parquet (exclude dashboard variants)

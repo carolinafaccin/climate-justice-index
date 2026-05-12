@@ -197,7 +197,7 @@ def _write_figures(df_final):
     _mode_tag = "B" if NORMALIZE_DOM else "A"
     _PALETTE = ["#1f77b4", "#d62728", "#2ca02c", "#ff7f0e", "#9467bd", "#8c564b"]
 
-    _cities_path = cfg.BASE_DIR / "diagnose" / "cities.json"
+    _cities_path = cfg.BASE_DIR / "config" / "cities.json"
     if _cities_path.exists():
         with open(_cities_path, "r", encoding="utf-8") as _f:
             CITIES = _json.load(_f)["cities"]

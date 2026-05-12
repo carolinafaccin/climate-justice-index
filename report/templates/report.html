@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Índice de Injustiça Climática — Relatório Municipal</title>
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+  <style>
+    #pw-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: #fff;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #pw-box {
+      text-align: center;
+      font-family: Arial, sans-serif;
+      border: 1px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 2.5rem 3rem;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      max-width: 360px; width: 90%;
+    }
+    #pw-box .pw-logo { font-size: 0.85rem; color: #888; margin-bottom: 0.4rem; }
+    #pw-box h2 { margin: 0 0 1.4rem; font-size: 1.1rem; color: #222; font-weight: 600; }
+    #pw-box input {
+      width: 100%; box-sizing: border-box;
+      padding: 0.55rem 0.8rem; font-size: 1rem;
+      border: 1px solid #ccc; border-radius: 6px;
+      outline: none; margin-bottom: 0.75rem;
+    }
+    #pw-box input:focus { border-color: #F0AB00; box-shadow: 0 0 0 2px #F0AB0033; }
+    #pw-box button {
+      width: 100%; padding: 0.55rem; font-size: 1rem;
+      background: #F0AB00; color: #fff; border: none;
+      border-radius: 6px; cursor: pointer; font-weight: 600;
+    }
+    #pw-box button:hover { background: #d49600; }
+    #pw-error { color: #c0392b; font-size: 0.85rem; min-height: 1.1rem; margin-top: 0.4rem; }
+  </style>
+</head>
+<body>
+
+<!-- ================================================================ PASSWORD -->
+<div id="pw-overlay">
+  <div id="pw-box">
+    <p class="pw-logo">WRI Brasil</p>
+    <h2>Índice de Injustiça Climática</h2>
+    <input type="password" id="pw-input" placeholder="Senha de acesso" autofocus
+           onkeydown="if(event.key==='Enter') checkPw()">
+    <button onclick="checkPw()">Entrar</button>
+    <p id="pw-error"></p>
+  </div>
+</div>
+<script>
+  (function () {
+    var KEY = "iic_auth";
+    if (sessionStorage.getItem(KEY) === "1") {
+      document.getElementById("pw-overlay").style.display = "none";
+    }
+  })();
+  function checkPw() {
+    var val = document.getElementById("pw-input").value;
+    if (val === "wribrasil") {
+      sessionStorage.setItem("iic_auth", "1");
+      document.getElementById("pw-overlay").style.display = "none";
+    } else {
+      document.getElementById("pw-error").textContent = "Senha incorreta.";
+      document.getElementById("pw-input").value = "";
+      document.getElementById("pw-input").focus();
+    }
+  }
+</script>
+
+<!-- ================================================================ SIDEBAR -->
+<nav id="sidebar">
+  <div class="sidebar-brand">
+    <span class="brand-wri">WRI Brasil</span>
+    <span class="brand-title">Índice de Injustiça Climática</span>
+  </div>
+  <ul class="toc">
+    <li><a href="#intro">Sobre o Índice</a></li>
+    <li><a href="#composicao">Composição do Índice</a></li>
+    <li><a href="#comparativo">Comparativo entre Municípios</a></li>
+    {% if notes_html %}
+    <li><a href="#notas">Notas Metodológicas</a></li>
+    {% endif %}
+    {% set ns = namespace(current_group="") %}
+    {% for city in cities %}
+    {% if city.group != ns.current_group %}
+    {% set ns.current_group = city.group %}
+    <li class="toc-group-label">{{ city.group }}</li>
+    {% endif %}
+    <li class="toc-city">
+      <a href="#{{ city.slug }}">{{ city.nm_mun }}</a>
+      <ul class="toc-sub">
+        <li><a href="#{{ city.slug }}-overview">Visão Geral</a></li>
+        <li><a href="#{{ city.slug }}-ip">Grupos Prioritários</a></li>
+        <li><a href="#{{ city.slug }}-iv">Vulnerabilidade</a></li>
+        <li><a href="#{{ city.slug }}-ie">Exposição Climática</a></li>
+        <li><a href="#{{ city.slug }}-ig">Capacidade de Gestão Municipal</a></li>
+      </ul>
+    </li>
+    {% endfor %}
+  </ul>
+  <div class="sidebar-pdf">
+    <button class="btn-pdf" onclick="window.print()">⬇ Salvar como PDF</button>
+  </div>
+</nav>
+
+<!-- ================================================================ CONTENT -->
+<main id="content">
+
+  <!-- ---- COVER ---- -->
+  <section class="page cover-page" id="cover">
+    <div class="cover-inner">
+      <div class="cover-tag">WRI Brasil</div>
+      <h1>Índice de Injustiça Climática</h1>
+      <p class="cover-subtitle">Relatório Municipal</p>
+      <p class="cover-meta">Gerado em {{ generated_at }}</p>
+      <button class="btn-pdf" onclick="window.print()">⬇ Salvar como PDF</button>
+      <div class="cover-cities" style="margin-top:2rem;">
+        {% set ns = namespace(current_group="") %}
+        {% for city in cities %}
+        {% if city.group != ns.current_group %}
+        {% set ns.current_group = city.group %}
+        <span class="cover-group-label">{{ city.group }}</span>
+        {% endif %}
+        <a class="city-chip" href="#{{ city.slug }}">{{ city.nm_mun }}</a>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- INTRODUCTION ---- -->
+  <section class="page" id="intro">
+    <h1 class="section-title">Sobre o Índice</h1>
+    <div class="intro-text">
+      <p>O <strong>Índice de Injustiça Climática (IIC)</strong> mensura desigualdades territoriais
+      frente aos riscos climáticos para todos os municípios brasileiros. O índice é calculado em
+      grade hexagonal H3 de alta resolução (~0,1 km²), o que permite identificar bolsões de
+      vulnerabilidade dentro das cidades.</p>
+      <p>O IIC é a média simples de quatro dimensões, cada uma com peso igual de <strong>25%</strong>.
+      Dentro de cada dimensão, os indicadores também têm peso igual. Valores mais próximos de 1,0
+      indicam maior injustiça climática. A exceção é a dimensão
+      <em>Capacidade de Gestão Municipal</em>, cujo sentido é invertido: menor capacidade
+      institucional equivale a maior injustiça.</p>
+      <p>As legendas dos mapas utilizam <strong>quintis calculados por porte municipal</strong>,
+      permitindo comparar cada hexágono com outros de municípios de mesmo porte.</p>
+    </div>
+    <div class="dim-cards">
+      <div class="dim-card" style="border-color:#eb8026; background:#fff8f2;">
+        <h4 style="color:#eb8026;">IP — Grupos Prioritários</h4>
+        <p>Concentração de grupos populacionais historicamente mais vulneráveis a eventos climáticos:
+        mulheres negras chefes de domicílio, população negra, indígenas e quilombolas,
+        idosos e crianças de baixa renda.</p>
+      </div>
+      <div class="dim-card" style="border-color:#3855a3; background:#f3f5fc;">
+        <h4 style="color:#3855a3;">IV — Vulnerabilidade Socioeconômica</h4>
+        <p>Condições socioeconômicas que ampliam a fragilidade frente a eventos extremos:
+        baixa renda, moradia precária, analfabetismo, dificuldade de acesso à saúde e
+        déficit de infraestrutura básica.</p>
+      </div>
+      <div class="dim-card" style="border-color:#32864b; background:#f2f9f4;">
+        <h4 style="color:#32864b;">IE — Exposição a Riscos Climáticos</h4>
+        <p>Exposição territorial a deslizamentos de terra, inundações, elevação do nível do mar,
+        calor extremo e proximidade de focos de queimadas.</p>
+      </div>
+      <div class="dim-card" style="border-color:#9b216c; background:#fdf2f8;">
+        <h4 style="color:#9b216c;">IG — Capacidade de Gestão Municipal <em>(invertida)</em></h4>
+        <p>Existência de instrumentos institucionais de resposta a desastres: investimento ambiental,
+        planejamento de contingência, sistemas de alerta, mapeamento de risco e
+        políticas de reparação. Maior capacidade = menor injustiça.</p>
+      </div>
+    </div>
+
+    <div class="nat-dist-block">
+      <h3 class="subsection-title">Distribuição nacional do IIC</h3>
+      <p class="ind-description">Frequência de hexágonos (~0,1 km² cada) por faixa de injustiça climática em todo o Brasil.</p>
+      <img src="{{ nat_dist_img }}" alt="Distribuição nacional do IIC">
+    </div>
+  </section>
+
+  <!-- ---- COMPOSIÇÃO DO ÍNDICE ---- -->
+  <section class="page" id="composicao">
+    <h1 class="section-title">Composição do Índice</h1>
+    <p class="sankey-note">
+      O IIC é a média simples de quatro dimensões, cada uma com peso igual de <strong>25%</strong>.
+      Dentro de cada dimensão, os indicadores também têm peso igual. O diagrama abaixo mostra como
+      os 25 indicadores se agregam nas quatro dimensões e, por fim, no índice final.
+      Passe o cursor sobre os fluxos para ver os pesos individuais.
+    </p>
+    <div class="sankey-wrap">
+      <div id="sankey-div"></div>
+    </div>
+    <script>
+      (function () {
+        var fig = {{ sankey_json | safe }};
+        Plotly.newPlot('sankey-div', fig.data, fig.layout,
+          {responsive: true, displayModeBar: false});
+      })();
+    </script>
+  </section>
+
+  <!-- ---- COMPARATIVO ---- -->
+  <section class="page" id="comparativo">
+    <h1 class="section-title">Comparativo entre Municípios</h1>
+    <p class="sankey-note">
+      Visão consolidada dos municípios presentes neste relatório.
+      Valores mais próximos de 1,0 indicam maior injustiça climática.
+      A dimensão IG (Capacidade de Gestão Municipal) é invertida: valores mais altos = maior capacidade = menor injustiça.
+    </p>
+    <div class="comparison-table-wrap">
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>Município</th>
+            <th>UF</th>
+            <th>Porte</th>
+            <th>IIC Médio</th>
+            <th>Percentil Nacional</th>
+            <th style="color:#f5c896;">IP</th>
+            <th style="color:#adb8dc;">IV</th>
+            <th style="color:#a2cbb0;">IE</th>
+            <th style="color:#d4a3be;">IG</th>
+            <th>Hexágonos</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set ns = namespace(current_group="") %}
+          {% for city in cities %}
+          {% if city.group != ns.current_group %}
+          {% set ns.current_group = city.group %}
+          <tr class="ct-group-row"><td colspan="10">{{ city.group }}</td></tr>
+          {% endif %}
+          <tr>
+            <td class="ct-city"><a href="#{{ city.slug }}" style="color:inherit;text-decoration:none;">{{ city.nm_mun }}</a></td>
+            <td class="ct-num">{{ city.nm_uf.split()[-1] }}</td>
+            <td>{{ city.porte }}</td>
+            <td class="ct-iic">{{ city.iic_mean }}</td>
+            <td class="ct-num">{{ city.national_pct }}%</td>
+            <td class="ct-dim" style="color:#c96a10;">{{ city.dims.ip.city_mean }}</td>
+            <td class="ct-dim" style="color:#3855a3;">{{ city.dims.iv.city_mean }}</td>
+            <td class="ct-dim" style="color:#32864b;">{{ city.dims.ie.city_mean }}</td>
+            <td class="ct-dim" style="color:#9b216c;">{{ city.dims.ig.city_mean }}</td>
+            <td class="ct-num">{{ "{:,}".format(city.n_hexagons) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================================================================ CITIES -->
+  {% for city in cities %}
+
+  <!-- ---- CITY HEADER ---- -->
+  <section class="page city-header-page" id="{{ city.slug }}">
+    <div class="city-header-inner">
+      <p class="city-uf">{{ city.nm_uf }}</p>
+      <h1>{{ city.nm_mun }}</h1>
+      <div class="city-quick-stats">
+        <div class="quick-stat">
+          <span class="stat-value">{{ city.iic_mean }}</span>
+          <span class="stat-label">IIC Médio</span>
+        </div>
+        <div class="quick-stat">
+          <span class="stat-value">{{ city.national_pct }}%</span>
+          <span class="stat-label">Percentil Nacional</span>
+        </div>
+        <div class="quick-stat">
+          <span class="stat-value">{{ city.iic_max }}</span>
+          <span class="stat-label">IIC Máximo</span>
+        </div>
+        <div class="quick-stat">
+          <span class="stat-value">{{ "{:,}".format(city.n_hexagons) }}</span>
+          <span class="stat-label">Hexágonos</span>
+        </div>
+        <div class="quick-stat">
+          <span class="stat-value" style="font-size:1.1rem;">{{ city.porte }}</span>
+          <span class="stat-label">Porte Municipal</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- OVERVIEW ---- -->
+  <section class="page" id="{{ city.slug }}-overview">
+    <h2 class="section-title" style="border-color: var(--yellow);">
+      Visão Geral — {{ city.nm_mun }}
+    </h2>
+
+    <div class="overview-block">
+      <img src="{{ city.imgs.overview }}" alt="Visão geral {{ city.nm_mun }}">
+    </div>
+  </section>
+
+  <!-- ---- PER DIMENSION ---- -->
+  {% for abbr, dim in city.dims.items() %}
+  <section class="page" id="{{ city.slug }}-{{ abbr }}">
+    <h2 class="section-title" style="border-color: {{ dim.color }};">
+      {{ dim.abbr_upper }} — {{ dim.label }}
+      {% if dim.invert %}<span class="invert-note">(invertida no IIC)</span>{% endif %}
+    </h2>
+
+    <div class="dim-score-bar">
+      <span>Média no município: <strong>{{ dim.city_mean }}</strong></span>
+      <span>Média Brasil: <strong>{{ dim.national_mean }}</strong></span>
+      {% if dim.invert %}
+      <span style="color:{{ dim.color }}; font-size:0.82rem;">
+        ↑ Valores mais altos = maior capacidade institucional = menor injustiça
+      </span>
+      {% endif %}
+    </div>
+
+    {% for ind_key, ind in dim.indicators.items() %}
+    <div class="indicator-block">
+      <div class="ind-header">
+        <span class="ind-key" style="background: {{ dim.color }};">{{ ind_key | upper }}</span>
+        <span class="ind-label">{{ ind.label }}</span>
+        <span class="ind-means">Município: {{ ind.city_mean }} &nbsp;|&nbsp; Brasil: {{ ind.national_mean }}</span>
+      </div>
+      <p class="ind-description">{{ ind.description }}</p>
+      <div class="ind-fig">
+        <img src="{{ ind.fig }}" alt="{{ ind.label }} — {{ city.nm_mun }}">
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endfor %}
+
+  {% endfor %}
+
+  <!-- ---- NOTAS METODOLÓGICAS ---- -->
+  {% if notes_html %}
+  <section class="page" id="notas">
+    <h1 class="section-title">Notas Metodológicas</h1>
+    <p class="sankey-note">
+      Esta seção descreve os métodos de cálculo de cada indicador e o dicionário de variáveis e fontes utilizadas.
+      O arquivo-fonte <code>diagnose/methodological_notes.md</code> pode ser editado diretamente para atualizar o texto.
+    </p>
+    <div class="notes-body">
+      {{ notes_html | safe }}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- ---- FOOTER ---- -->
+  <section class="page report-footer">
+    Relatório gerado em {{ generated_at }} &nbsp;·&nbsp; WRI Brasil &nbsp;·&nbsp; Índice de Injustiça Climática
+  </section>
+
+</main>
+
+<!-- Back to top -->
+<button id="back-to-top" title="Voltar ao topo">&#8679;</button>
+
+<!-- Lightbox -->
+<div id="lightbox">
+  <button id="lightbox-close" title="Fechar">&times;</button>
+  <img src="" alt="Figura ampliada">
+</div>
+
+<script>
+(function () {
+
+  /* ---- SIDEBAR: toggle city sub-list on click ---- */
+  var tocCities = Array.from(document.querySelectorAll('.toc-city'));
+  tocCities.forEach(function (tc) {
+    tc.querySelector('a').addEventListener('click', function () {
+      var isOpen = tc.classList.contains('open');
+      tocCities.forEach(function (c) { c.classList.remove('open'); });
+      if (!isOpen) tc.classList.add('open');
+    });
+  });
+
+  /* ---- SIDEBAR: active link + city auto-expand on scroll ---- */
+  var allLinks = Array.from(document.querySelectorAll('.toc a'));
+  var allSections = Array.from(document.querySelectorAll('section[id]'));
+
+  var sectionObserver = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) return;
+      var id = entry.target.id;
+      var href = '#' + id;
+
+      // Highlight matching link
+      allLinks.forEach(function (l) { l.classList.remove('active'); });
+      var active = allLinks.find(function (l) { return l.getAttribute('href') === href; });
+      if (active) {
+        active.classList.add('active');
+        // Auto-open city if sub-section
+        var parentCity = active.closest('.toc-city');
+        if (parentCity) {
+          tocCities.forEach(function (c) { c.classList.remove('open'); });
+          parentCity.classList.add('open');
+        }
+      }
+    });
+  }, { rootMargin: '-15% 0px -75% 0px', threshold: 0 });
+
+  allSections.forEach(function (el) { sectionObserver.observe(el); });
+
+  /* ---- BACK TO TOP ---- */
+  var btn = document.getElementById('back-to-top');
+  window.addEventListener('scroll', function () {
+    btn.classList.toggle('visible', window.scrollY > 400);
+  }, { passive: true });
+  btn.addEventListener('click', function () {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  /* ---- LIGHTBOX ---- */
+  var lb    = document.getElementById('lightbox');
+  var lbImg = lb.querySelector('img');
+
+  document.querySelectorAll('.ind-fig img, .overview-block img').forEach(function (img) {
+    img.addEventListener('click', function () {
+      lbImg.src = this.src;
+      lb.classList.add('active');
+    });
+  });
+  lb.addEventListener('click', function (e) {
+    if (e.target === lb || e.target.id === 'lightbox-close') {
+      lb.classList.remove('active');
+    }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') lb.classList.remove('active');
+  });
+
+})();
+</script>
+</body>
+</html>

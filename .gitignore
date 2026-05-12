@@ -210,7 +210,7 @@ __marimo__/
 config/config.local.json
 data/
 run_pipeline.bat
-diagnose/cities.json
+config/cities.json
 
 # Folders
 __pycache__/
@@ -220,3 +220,4 @@ archive/
 .claude/
 manuscript/
 .DS_Store
+docs/
