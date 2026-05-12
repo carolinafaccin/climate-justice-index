@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
-PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 sys.path.append(PROJECT_ROOT)
 from src import config as cfg
 from src import utils
@@ -23,6 +23,11 @@ from src import utils
 QUEIMADAS_DIR = cfg.RAW_DIR / cfg.INDICATORS["e5"]["source"]["dir"]
 ANOS          = list(range(2016, 2026))   # 2016–2025
 K_RING        = 4                         # ~1 km buffer in H3 res9
+
+# True  → Option B: normalise both fire-fraction AND qtd_dom before multiplying [0,1]×[0,1]
+#          Result: high score only where both fire exposure AND households are high
+# False → Option A: normalise fire-fraction only [0,1], multiply by raw qtd_dom
+NORMALIZE_DOM = True
 
 H3_RES = cfg.H3_RES
 
@@ -51,9 +56,9 @@ def main():
     print(f"Years: {ANOS[0]}–{ANOS[-1]}  |  k-ring: {K_RING} (~1 km)")
     print("=" * 60)
 
-    # Load H3 base
+    # Load H3 base (with qtd_dom for household weighting)
     print("\n1/4 - Loading H3 base grid...")
-    df_h3 = pd.read_parquet(cfg.FILES_H3["base_metadata"], columns=["h3_id"])
+    df_h3 = pd.read_parquet(cfg.FILES_H3["base_metadata"], columns=["h3_id", "qtd_dom"])
     all_h3 = set(df_h3["h3_id"].values)
     print(f"   {len(all_h3):,} hexagons in base grid.")
 
@@ -103,9 +108,34 @@ def main():
     df_agg = exposure_count.reset_index()
     df_agg.columns = ["h3_id", "anos_expostos"]
 
-    # e5_abs = fraction of years exposed (0–1); annual mean approach
-    df_agg[col_e5_abs]  = df_agg["anos_expostos"] / n_years
+    # Fraction of years with fire exposure in the neighbourhood (0–1)
+    frac = df_agg["anos_expostos"] / n_years
+
+    # Bring in qtd_dom for household weighting
+    df_agg = df_agg.merge(df_h3[["h3_id", "qtd_dom"]], on="h3_id", how="left")
+    df_agg["qtd_dom"] = pd.to_numeric(df_agg["qtd_dom"], errors="coerce").fillna(0)
+
+    # Normalise fire fraction with winsorization (p1–p99), capped at [0,1]
+    p99_frac = frac.quantile(0.99)
+    p01_frac = frac.quantile(0.01)
+    frac_norm = ((frac - p01_frac) / (p99_frac - p01_frac)).clip(0, 1) if p99_frac > p01_frac else frac.clip(0, 1)
+
+    if NORMALIZE_DOM:
+        # Option B: normalise qtd_dom too → score [0,1]×[0,1], high only where both are high
+        p95_dom = df_agg["qtd_dom"].quantile(0.95)
+        qtd_dom_term = (df_agg["qtd_dom"] / p95_dom).clip(upper=1) if p95_dom > 0 else pd.Series(0.0, index=df_agg.index)
+        print(f"   Mode: NORMALIZE_DOM=True  (Option B — frac_norm × qtd_dom_norm)")
+    else:
+        qtd_dom_term = df_agg["qtd_dom"]
+        print(f"   Mode: NORMALIZE_DOM=False (Option A — frac_norm × qtd_dom)")
+
+    df_agg[col_e5_abs]  = frac_norm * qtd_dom_term
     df_agg[col_e5_norm] = utils.normalize_minmax(df_agg[col_e5_abs], winsorize=True)
+
+    n_exposed    = (df_agg[col_e5_abs] > 0).sum()
+    n_uninhabited = (df_agg["qtd_dom"] == 0).sum()
+    print(f"   Hexagons with exposure (fire + households): {n_exposed:,}")
+    print(f"   Hexagons uninhabited (qtd_dom = 0):         {n_uninhabited:,}")
 
     # Merge with H3 base and save
     print("4/4 - Saving parquet...")
@@ -126,7 +156,8 @@ def _write_diagnostic(df_agg, df_final, n_years, year_exposure):
         f.write("=" * 60 + "\n\n")
         f.write(f"Fire hotspots dir   : {QUEIMADAS_DIR}\n")
         f.write(f"Years processed     : {sorted(year_exposure.keys())}\n")
-        f.write(f"k-ring              : {K_RING}\n\n")
+        f.write(f"k-ring              : {K_RING}\n")
+        f.write(f"NORMALIZE_DOM       : {NORMALIZE_DOM}\n\n")
 
         f.write("Exposed hexagons per year:\n")
         for ano in sorted(year_exposure):
@@ -136,6 +167,13 @@ def _write_diagnostic(df_agg, df_final, n_years, year_exposure):
         dist = df_agg["anos_expostos"].value_counts().sort_index()
         for v, c in dist.items():
             f.write(f"  {v:2d} years: {c:,} hexagons\n")
+
+        f.write(f"\n--- qtd_dom (households per hexagon) ---\n")
+        s_dom = df_agg["qtd_dom"]
+        f.write(f"  sum    = {s_dom.sum():,.0f} households\n")
+        f.write(f"  mean   = {s_dom.mean():.2f}\n")
+        f.write(f"  median = {s_dom.median():.2f}\n")
+        f.write(f"  zeros  = {(s_dom == 0).sum():,} hexagons\n\n")
 
         f.write(f"\n--- {col_e5_abs} ---\n")
         s = df_final[col_e5_abs].dropna()

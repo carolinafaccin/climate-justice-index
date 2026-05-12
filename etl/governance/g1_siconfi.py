@@ -14,7 +14,7 @@ from datetime import datetime
 # ==============================================================================
 # 1. ENVIRONMENT CONFIGURATION
 # ==============================================================================
-PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 sys.path.append(PROJECT_ROOT)
 
 from src import config as cfg

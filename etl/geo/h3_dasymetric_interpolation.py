@@ -21,7 +21,7 @@ from pathlib import Path
 # 1. ENVIRONMENT CONFIGURATION
 # ==============================================================================
 # Discovers the exact location of THIS .py file and goes up two levels (to the root)
-PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 sys.path.append(PROJECT_ROOT)
 
 from src import config as cfg

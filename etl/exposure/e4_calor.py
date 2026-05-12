@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
-PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 sys.path.append(PROJECT_ROOT)
 from src import config as cfg
 from src import utils
