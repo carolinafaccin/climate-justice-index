@@ -1,4 +1,4 @@
-# Índice de Injustiça Climática — v2.0
+# Índice de Injustiça Climática
 
 Projeto de dados para mensurar desigualdades territoriais e injustiças climáticas nos municípios brasileiros, produzido pelo WRI Brasil.
 
