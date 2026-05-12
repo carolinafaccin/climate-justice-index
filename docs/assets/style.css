@@ -292,17 +292,52 @@ h2.section-title {
 #lightbox-close:hover { opacity: 1; }
 .ind-fig img, .overview-block img { cursor: zoom-in; }
 
+/* ---- SANKEY PRINT FALLBACK (hidden on screen) ---- */
+.sankey-print-img { display: none; }
+
 /* ---- PRINT ---- */
 @media print {
+  /* Hide UI chrome */
   #sidebar, #back-to-top, #lightbox, #pw-overlay { display: none !important; }
+  .btn-pdf { display: none !important; }
   #content { margin-left: 0 !important; }
-  .page { border-bottom: 1px solid #ddd; padding: 1.2rem 1.8rem; max-width: none; }
-  .city-header-page { min-height: auto; border-left: 4px solid var(--yellow); }
-  .indicator-block { page-break-inside: avoid; }
-  .overview-block, .ind-fig, .nat-dist-block { page-break-inside: avoid; }
-  .sankey-wrap { display: none; }
-  h1, h2 { page-break-after: avoid; }
-  body { font-size: 10pt; }
+  body { font-size: 10pt; color: #111; }
+
+  .page { border-bottom: 1px solid #ddd; padding: 1.4rem 2rem; max-width: none; box-shadow: none; }
+
+  /* Cover alone on page 1 */
+  .cover-page {
+    min-height: 100vh; border-left: 4px solid var(--yellow);
+    break-after: page; display: flex; align-items: center;
+  }
+
+  /* Each city starts on a new page */
+  .city-header-page { break-before: page; min-height: auto; border-left: 4px solid var(--yellow); }
+
+  /* Notas start on a new page */
+  .print-page-break { break-before: page; }
+
+  /* Avoid orphaned content inside blocks */
+  .indicator-block { break-inside: avoid; }
+  .overview-block { break-inside: avoid; }
+  .ind-fig { break-inside: avoid; }
+  .nat-dist-block { break-inside: avoid; }
+  .dim-score-bar { break-inside: avoid; }
+  h1, h2 { break-after: avoid; }
+
+  /* Sankey: hide Plotly, show static image */
+  .sankey-wrap { display: none !important; }
+  .sankey-print-img {
+    display: block !important; width: 100%;
+    border-radius: 6px; border: 1px solid var(--border); margin-top: 1rem;
+  }
+
+  /* Comparison table: compact */
+  .comparison-table { font-size: 8pt; }
+  .comparison-table th, .comparison-table td { padding: 0.3rem 0.5rem; }
+
+  /* Dim cards: 1 column */
+  .dim-cards { grid-template-columns: 1fr; }
 }
 
 /* ---- METHODOLOGICAL NOTES ---- */

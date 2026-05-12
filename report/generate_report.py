@@ -14,6 +14,7 @@ import unicodedata
 from datetime import date
 from pathlib import Path
 
+import io
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -24,6 +25,7 @@ from matplotlib.patches import Rectangle
 import numpy as np
 import pandas as pd
 import geopandas as gpd
+from PIL import Image
 
 plt.rcParams.update({
     "font.family":     "Arial",
@@ -71,6 +73,16 @@ DIM_COLORS = {
 DIM_ORDER    = ["ip", "iv", "ie", "ig"]
 ALL_IND_KEYS = diag_utils.ALL_INDICATOR_KEYS
 ABBR_TO_DIM  = {meta["abbr"].lower(): dim for dim, meta in cfg.DIMENSION_META.items()}
+
+WEBP_QUALITY = 82  # 0-100; 82 gives ~68% size reduction vs PNG with negligible quality loss
+
+def _save_webp(fig, path: Path, dpi: int = DPI) -> None:
+    """Save a matplotlib figure as WebP via Pillow (significantly smaller than PNG)."""
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
+    buf.seek(0)
+    Image.open(buf).save(path.with_suffix(".webp"), "WEBP", quality=WEBP_QUALITY, method=4)
+    plt.close(fig)
 
 # ==============================================================================
 # FILE DISCOVERY
@@ -357,8 +369,7 @@ def _save_overview_figure(
     ax_hist.set_title("Distribuição do IIC Final", fontsize=8.5, pad=4)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=DPI, bbox_inches="tight")
-    plt.close(fig)
+    _save_webp(fig, out_path)
 
 # ==============================================================================
 # COMBINED INDICATOR FIGURE (map left + histogram right)
@@ -381,13 +392,21 @@ def _save_indicator_figure(
     porte_label = porte if porte else "não identificado"
 
     fig = plt.figure(figsize=IND_FIG_SIZE)
-    gs  = fig.add_gridspec(1, 2, width_ratios=[1.35, 1], wspace=0.1)
-    ax_map  = fig.add_subplot(gs[0])
-    ax_hist = fig.add_subplot(gs[1])
+    # Map spans full height on the left; histogram sits in the lower-right only,
+    # creating a narrow horizontal strip that doesn't compete with the map visually.
+    gs = fig.add_gridspec(
+        2, 2,
+        width_ratios=[1.35, 1],
+        height_ratios=[1, 0.52],
+        hspace=0.08,
+        wspace=0.15,
+    )
+    ax_map  = fig.add_subplot(gs[:, 0])  # full-height left column
+    ax_hist = fig.add_subplot(gs[1, 1])  # bottom-right only
 
-    # Left: map — legend placed below the axes to avoid overlapping geometry
+    # Left: map
     _draw_hexagons(ax_map, gdf, col, class_colors, class_bounds, boundary)
-    ax_map.set_title(display_name, fontsize=8.5, pad=4)
+    ax_map.set_title(display_name, fontsize=8, pad=4, color="#444")
     handles = _legend_handles(class_colors, labels)
     ax_map.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, -0.02),
                   ncol=3, fontsize=6,
@@ -396,21 +415,31 @@ def _save_indicator_figure(
                   framealpha=1.0, edgecolor="#ccc",
                   handlelength=1.0, handleheight=0.85, borderpad=0.4, labelspacing=0.2)
 
-    # Right: histogram
-    ax_hist.hist(city_vals, bins=25, range=(0, 1), color=dim_color, edgecolor="none", alpha=0.65)
-    ax_hist.axvline(city_mean, color=WRI_YELLOW, lw=2,   label=f"Município: {city_mean:.3f}")
-    ax_hist.axvline(nat_mean,  color="#444444", lw=1.5, ls="--", label=f"Brasil: {nat_mean:.3f}")
-    ax_hist.set_xlabel(display_name, fontsize=8)
-    ax_hist.set_ylabel("Hexágonos", fontsize=8)
+    # Right: histogram — narrow horizontal strip
+    valid = city_vals[~np.isnan(city_vals)]
+    counts, edges = np.histogram(valid, bins=20, range=(0, 1))
+    bar_w = (edges[1] - edges[0]) * 0.78
+    centers = (edges[:-1] + edges[1:]) / 2
+    ax_hist.bar(centers, counts, width=bar_w, color=dim_color, alpha=0.55, edgecolor="none")
+    ax_hist.axvline(city_mean, color=WRI_YELLOW, lw=1.8, label=f"Município: {city_mean:.3f}")
+    ax_hist.axvline(nat_mean,  color="#666",     lw=1.2, ls="--", label=f"Brasil: {nat_mean:.3f}")
+    ax_hist.set_xlabel(display_name, fontsize=7, color="#555")
+    ax_hist.set_ylabel("Hexágonos",  fontsize=7, color="#555")
     ax_hist.set_xlim(0, 1)
-    ax_hist.tick_params(labelsize=7)
-    ax_hist.legend(fontsize=7.5, framealpha=0.9)
-    ax_hist.spines[["top", "right"]].set_visible(False)
-    ax_hist.set_title("Distribuição", fontsize=8.5, pad=4)
+    ax_hist.tick_params(labelsize=6.5, colors="#999")
+    ax_hist.spines[["top", "right", "left"]].set_visible(False)
+    ax_hist.spines["bottom"].set_color("#ccc")
+    ax_hist.yaxis.grid(True, alpha=0.35, linestyle="-", lw=0.5, color="#bbb")
+    ax_hist.set_axisbelow(True)
+    ax_hist.set_title("Distribuição", fontsize=7, pad=3, color="#999", fontweight="normal")
+    ax_hist.legend(
+        loc="upper center", bbox_to_anchor=(0.5, -0.3),
+        ncol=2, fontsize=6.5, framealpha=0,
+        handlelength=1.2, handletextpad=0.4, columnspacing=1.0,
+    )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=DPI, bbox_inches="tight")
-    plt.close(fig)
+    _save_webp(fig, out_path)
 
 # ==============================================================================
 # PER-CITY GENERATION
@@ -499,7 +528,7 @@ def generate_city(
                 "description":   cfg.INDICATORS[ind_key]["description"],
                 "city_mean":     fmt3(ind_mean),
                 "national_mean": fmt3(nat_ind),
-                "fig":           f"imgs/{slug}/{abbr}/{ind_key}.png",
+                "fig":           f"imgs/{slug}/{abbr}/{ind_key}.webp",
             }
 
         dims_data[abbr] = {
@@ -525,7 +554,7 @@ def generate_city(
         "group":        city_row.get("group", ""),
         "dims":         dims_data,
         "imgs": {
-            "overview": f"imgs/{slug}/overview.png",
+            "overview": f"imgs/{slug}/overview.webp",
         },
     }
 
@@ -550,9 +579,8 @@ def _save_national_distribution(df_full: pd.DataFrame, nat_iic_mean: float, out_
     ax.text(0.99, 0.97, f"Total: {len(vals):,} hexágonos",
             transform=ax.transAxes, ha="right", va="top", fontsize=8.5, color="#777")
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=DPI, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  Saved: {out_path.name}")
+    _save_webp(fig, out_path)
+    print(f"  Saved: {out_path.with_suffix('.webp').name}")
 
 
 # ==============================================================================
@@ -957,17 +985,52 @@ h2.section-title {
 #lightbox-close:hover { opacity: 1; }
 .ind-fig img, .overview-block img { cursor: zoom-in; }
 
+/* ---- SANKEY PRINT FALLBACK (hidden on screen) ---- */
+.sankey-print-img { display: none; }
+
 /* ---- PRINT ---- */
 @media print {
+  /* Hide UI chrome */
   #sidebar, #back-to-top, #lightbox, #pw-overlay { display: none !important; }
+  .btn-pdf { display: none !important; }
   #content { margin-left: 0 !important; }
-  .page { border-bottom: 1px solid #ddd; padding: 1.2rem 1.8rem; max-width: none; }
-  .city-header-page { min-height: auto; border-left: 4px solid var(--yellow); }
-  .indicator-block { page-break-inside: avoid; }
-  .overview-block, .ind-fig, .nat-dist-block { page-break-inside: avoid; }
-  .sankey-wrap { display: none; }
-  h1, h2 { page-break-after: avoid; }
-  body { font-size: 10pt; }
+  body { font-size: 10pt; color: #111; }
+
+  .page { border-bottom: 1px solid #ddd; padding: 1.4rem 2rem; max-width: none; box-shadow: none; }
+
+  /* Cover alone on page 1 */
+  .cover-page {
+    min-height: 100vh; border-left: 4px solid var(--yellow);
+    break-after: page; display: flex; align-items: center;
+  }
+
+  /* Each city starts on a new page */
+  .city-header-page { break-before: page; min-height: auto; border-left: 4px solid var(--yellow); }
+
+  /* Notas start on a new page */
+  .print-page-break { break-before: page; }
+
+  /* Avoid orphaned content inside blocks */
+  .indicator-block { break-inside: avoid; }
+  .overview-block { break-inside: avoid; }
+  .ind-fig { break-inside: avoid; }
+  .nat-dist-block { break-inside: avoid; }
+  .dim-score-bar { break-inside: avoid; }
+  h1, h2 { break-after: avoid; }
+
+  /* Sankey: hide Plotly, show static image */
+  .sankey-wrap { display: none !important; }
+  .sankey-print-img {
+    display: block !important; width: 100%;
+    border-radius: 6px; border: 1px solid var(--border); margin-top: 1rem;
+  }
+
+  /* Comparison table: compact */
+  .comparison-table { font-size: 8pt; }
+  .comparison-table th, .comparison-table td { padding: 0.3rem 0.5rem; }
+
+  /* Dim cards: 1 column */
+  .dim-cards { grid-template-columns: 1fr; }
 }
 
 /* ---- METHODOLOGICAL NOTES ---- */
@@ -1021,7 +1084,7 @@ def main() -> None:
     print(f"  {len(quintile_data)} porte groups computed.")
 
     print("\nGenerating national distribution figure...")
-    nat_dist_path = IMGS_DIR / "national_distribution.png"
+    nat_dist_path = IMGS_DIR / "national_distribution.webp"
     _save_national_distribution(df_full, nat["iic_final"]["mean"], nat_dist_path)
 
     print("Building Sankey JSON...")
@@ -1037,7 +1100,7 @@ def main() -> None:
     notes_html = _render_methodological_notes()
 
     print("\nRendering HTML...")
-    html = render_html(cities_data, sankey_json, "imgs/national_distribution.png", notes_html)
+    html = render_html(cities_data, sankey_json, "imgs/national_distribution.webp", notes_html)
     (DOCS_DIR / "index.html").write_text(html, encoding="utf-8")
     (ASSETS_DIR / "style.css").write_text(CSS, encoding="utf-8")
 

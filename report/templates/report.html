@@ -194,6 +194,7 @@
     <div class="sankey-wrap">
       <div id="sankey-div"></div>
     </div>
+    <img class="sankey-print-img" src="assets/sankey.png" alt="Composição do Índice de Injustiça Climática">
     <script>
       (function () {
         var fig = {{ sankey_json | safe }};
@@ -216,8 +217,6 @@
         <thead>
           <tr>
             <th>Município</th>
-            <th>UF</th>
-            <th>Porte</th>
             <th>IIC Médio</th>
             <th>Percentil Nacional</th>
             <th style="color:#f5c896;">IP</th>
@@ -232,12 +231,10 @@
           {% for city in cities %}
           {% if city.group != ns.current_group %}
           {% set ns.current_group = city.group %}
-          <tr class="ct-group-row"><td colspan="10">{{ city.group }}</td></tr>
+          <tr class="ct-group-row"><td colspan="8">{{ city.group }}</td></tr>
           {% endif %}
           <tr>
             <td class="ct-city"><a href="#{{ city.slug }}" style="color:inherit;text-decoration:none;">{{ city.nm_mun }}</a></td>
-            <td class="ct-num">{{ city.nm_uf.split()[-1] }}</td>
-            <td>{{ city.porte }}</td>
             <td class="ct-iic">{{ city.iic_mean }}</td>
             <td class="ct-num">{{ city.national_pct }}%</td>
             <td class="ct-dim" style="color:#c96a10;">{{ city.dims.ip.city_mean }}</td>
@@ -334,11 +331,10 @@
 
   <!-- ---- NOTAS METODOLÓGICAS ---- -->
   {% if notes_html %}
-  <section class="page" id="notas">
+  <section class="page print-page-break" id="notas">
     <h1 class="section-title">Notas Metodológicas</h1>
     <p class="sankey-note">
       Esta seção descreve os métodos de cálculo de cada indicador e o dicionário de variáveis e fontes utilizadas.
-      O arquivo-fonte <code>diagnose/methodological_notes.md</code> pode ser editado diretamente para atualizar o texto.
     </p>
     <div class="notes-body">
       {{ notes_html | safe }}
