@@ -146,7 +146,7 @@ def run_h3():
         if col in df_slim.columns:
             df_slim[col] = df_slim[col].astype('category')
 
-    path_dashboard = cfg.FILES['output']['repo_results_dir'] / f"{cfg.DASHBOARD_FILE_PREFIX}_{ts}.parquet"
+    path_dashboard = cfg.FILES['output']['dashboard_dir'] / f"{cfg.DASHBOARD_FILE_PREFIX}_{ts}.parquet"
     df_slim.to_parquet(path_dashboard, index=False, compression='gzip')
     logging.info(f"Dashboard parquet saved: {path_dashboard.name}  ({path_dashboard.stat().st_size / 1e6:.1f} MB)")
 
@@ -163,7 +163,7 @@ def _save_dimension_parquets(df: pd.DataFrame, ts: str) -> None:
     no single file exceeds GitHub's 100 MB limit (ig has 8 indicators).
     """
     MAX_COLS_PER_FILE = 6
-    out_dir = cfg.FILES['output']['repo_results_dir']
+    out_dir = cfg.FILES['output']['dashboard_dir']
 
     # Build {dimension: [indicator_keys_present_in_df]}
     dim_indicators: dict[str, list[str]] = {}

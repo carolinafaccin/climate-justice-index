@@ -31,8 +31,8 @@ STAGES = [
     ("cluster",  "explore/analysis/cluster_municipios.py"),
     ("multicol", "explore/checks/check_multicollinearity.py"),
     ("norm",     "explore/checks/check_normalization.py"),
-    ("export",   "explore/parquet_to_gpkg.py"),
-    ("scatter",  "explore/plot_scatter.py"),
+    ("export",   "explore/export/parquet_to_gpkg.py"),
+    ("scatter",  "explore/plots/plot_scatter.py"),
     ("report",   "report/generate_report.py"),
 ]
 

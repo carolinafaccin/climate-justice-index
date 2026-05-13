@@ -8,19 +8,39 @@ O índice combina exposição a riscos climáticos, vulnerabilidade socioeconôm
 
 ## Metodologia
 
-- **Grade espacial:** H3 resolução 9 (~105 m de lado por hexágono)
+- **Grade espacial:** H3 resolução 9 (~174 m de aresta em cada hexágono)
 - **Normalização:** Min-max de 0 a 1
 - **Interpolação censitária:** Ponderação dasimétrica por domicílios para distribuir dados de setor censitário nos hexágonos
-- **Índices intermediários:** cada dimensão gera seu próprio índice — IP (Grupos Prioritários), IV (Vulnerabilidade), IE (Exposição), IG (Gestão Municipal)
+- **Índices intermediários:** cada dimensão gera seu próprio índice — IP (Grupos Prioritários), IV (Vulnerabilidade), IE (Exposição), IG (Capacidade de Gestão Municipal)
 - **Índice final (IIC):** média simples de IP, IV, IE e IG invertido
+
+---
+
+## Como executar
+
+```bash
+# Pipeline completo (todas as etapas)
+python pipeline.py
+
+# Só o cálculo do índice
+python run_index.py
+
+# A partir de uma etapa específica
+python pipeline.py --from cluster
+
+# Apenas uma etapa
+python pipeline.py --only scatter
+```
+
+Etapas disponíveis: `calc` → `cluster` → `multicol` → `norm` → `export` → `scatter` → `report`
 
 ---
 
 ## Estrutura de pastas
 
 ```
-run.py                        # Ponto de entrada: executa o pipeline completo
-run_pipeline.bat              # Windows: encadeia pipeline + diagnósticos
+pipeline.py                   # Orquestrador completo (substitui o .bat)
+run_index.py                  # Executa só o cálculo do índice
 
 config/
 ├── indicators.json           # Fonte única de verdade para metadados dos indicadores
@@ -29,8 +49,8 @@ config/
 
 src/
 ├── config.py                 # Carregamento de caminhos e metadados
-├── pipeline.py               # Orquestrador principal
-├── calculations.py           # Cálculo dos índices (IP, IV, IE, IG → IIC)
+├── calculation.py            # Orquestra os passos do cálculo
+├── formulas.py               # Fórmulas matemáticas (IP, IV, IE, IG → IIC)
 └── utils.py                  # Utilitários: logging, normalização, I/O
 
 etl/
@@ -41,17 +61,33 @@ etl/
 ├── geo/                      # Pré-processamento espacial (interpolação dasimétrica)
 └── gee_scripts/              # Scripts JavaScript para Google Earth Engine
 
-diagnose/                     # Scripts de análise e validação de qualidade
+explore/
+├── analysis/                 # Análises científicas (ex: cluster de municípios)
+├── checks/                   # Validação de qualidade (multicolinearidade, normalização)
+├── plots/                    # Visualizações (mapas, scatter plots)
+├── export/                   # Conversão de formatos (parquet → GeoPackage)
+└── utils.py                  # Utilitários compartilhados pelos scripts de explore/
+
+report/                       # Geração do relatório HTML
 archive/                      # Código experimental e descontinuado
 data/                         # Dados de entrada e saída (gitignored)
 logs/                         # Logs de execução (gitignored)
+```
+
+### Saídas em `data_dir/outputs/results/`
+
+```
+results/
+├── complete/                 # Parquets completos do cálculo do índice
+├── dashboard/                # Parquets slim para o dashboard
+└── complete_gpkg/            # Arquivos GeoPackage
 ```
 
 ---
 
 ## Configuração de caminhos
 
-Por padrão, os dados são lidos em `data/` na raiz do projeto. Para usar outro diretório (ex: disco externo), crie um arquivo `config/config.local.json`:
+Por padrão, os dados são lidos em `data/` na raiz do projeto. Para usar outro diretório (ex: OneDrive, disco externo), crie um arquivo `config/config.local.json`:
 
 ```json
 { "data_dir": "/caminho/para/seus/dados" }

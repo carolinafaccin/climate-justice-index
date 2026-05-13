@@ -25,10 +25,15 @@ RAW_DIR = INPUTS_DIR / "raw"
 
 # Output Folders
 DIAGNOSE_DIR = OUTPUTS_DIR / "diagnose"
-FIGURES_DIR = OUTPUTS_DIR / "figures"
-RESULTS_DIR = OUTPUTS_DIR / "results"
+FIGURES_DIR  = OUTPUTS_DIR / "figures"
+RESULTS_DIR  = OUTPUTS_DIR / "results"
 
-for d in [OUTPUTS_DIR, RESULTS_DIR, FIGURES_DIR, DIAGNOSE_DIR]:
+RESULTS_COMPLETE_DIR  = RESULTS_DIR / "complete"
+RESULTS_DASHBOARD_DIR = RESULTS_DIR / "dashboard"
+RESULTS_GPKG_DIR      = RESULTS_DIR / "complete_gpkg"
+
+for d in [OUTPUTS_DIR, RESULTS_DIR, RESULTS_COMPLETE_DIR, RESULTS_DASHBOARD_DIR,
+          RESULTS_GPKG_DIR, FIGURES_DIR, DIAGNOSE_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 LOGS_DIR = BASE_DIR / "logs"
@@ -92,14 +97,9 @@ FILES_H3   = {k: CLEAN_DIR / f"{FILE_PREFIX}_{k}_{v['name']}.parquet" for k, v i
 
 FILES_H3["base_metadata"] = BASE_H3_DIR
 
-# Dashboard parquet always lives in the repo root's data/ folder,
-# regardless of config.local.json, so it can be committed to GitHub.
-REPO_RESULTS_DIR = BASE_DIR / "data" / "outputs" / "results"
-REPO_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-
-# Prefixes used by pipeline to generate timestamped filenames
-IIC_FILE_PREFIX          = f"{FILE_PREFIX}_iic_{_formatted_version}"
-DASHBOARD_FILE_PREFIX    = f"{FILE_PREFIX}_iic_{_formatted_version}_dashboard"
+# Prefixes used by calculation to generate timestamped filenames
+IIC_FILE_PREFIX           = f"{FILE_PREFIX}_iic_{_formatted_version}"
+DASHBOARD_FILE_PREFIX     = f"{FILE_PREFIX}_iic_{_formatted_version}_dashboard"
 # Use .format(dim_abbr=...) to get the prefix for a specific dimension chunk,
 # e.g. DASHBOARD_DIM_FILE_PREFIX.format(dim_abbr='ip') → 'br_h3_iic_v2_0_dashboard_dim_ip'
 DASHBOARD_DIM_FILE_PREFIX = f"{FILE_PREFIX}_iic_{_formatted_version}_dashboard_dim_{{dim_abbr}}"
@@ -107,7 +107,8 @@ DASHBOARD_DIM_FILE_PREFIX = f"{FILE_PREFIX}_iic_{_formatted_version}_dashboard_d
 FILES = {
     "h3": FILES_H3,
     "output": {
-        "results_dir":      RESULTS_DIR,
-        "repo_results_dir": REPO_RESULTS_DIR,
+        "results_dir":   RESULTS_COMPLETE_DIR,
+        "dashboard_dir": RESULTS_DASHBOARD_DIR,
+        "gpkg_dir":      RESULTS_GPKG_DIR,
     }
 }
