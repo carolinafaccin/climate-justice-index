@@ -35,7 +35,7 @@ plt.rcParams.update({
 SCRIPT_DIR   = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(PROJECT_ROOT / "diagnose"))
+sys.path.insert(0, str(PROJECT_ROOT / "explore"))
 
 from src import config as cfg
 import utils as diag_utils
@@ -88,20 +88,20 @@ def _save_webp(fig, path: Path, dpi: int = DPI) -> None:
 # FILE DISCOVERY
 # ==============================================================================
 _results = sorted(
-    [p for p in cfg.RESULTS_DIR.glob("br_h3_iic_v2_0_*.parquet") if "dashboard" not in p.name],
+    [p for p in cfg.FILES['output']['results_dir'].glob("br_h3_iic_v2_0_*.parquet") if "dashboard" not in p.name],
     key=lambda p: p.stat().st_mtime,
     reverse=True,
 )
 if not _results:
     # Fallback: use main dashboard parquet (not the dimension-split ones)
     _results = sorted(
-        [p for p in cfg.RESULTS_DIR.glob("br_h3_iic_v2_0_dashboard_*.parquet")
+        [p for p in cfg.FILES['output']['dashboard_dir'].glob("br_h3_iic_v2_0_dashboard_*.parquet")
          if "_dim_" not in p.name],
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
 if not _results:
-    raise FileNotFoundError(f"No results found in {cfg.RESULTS_DIR}.\nRun `python run.py` first.")
+    raise FileNotFoundError(f"No results found in {cfg.FILES['output']['results_dir']}.\nRun `python run_index.py` first.")
 RESULTS_FILE = _results[0]
 
 # ==============================================================================

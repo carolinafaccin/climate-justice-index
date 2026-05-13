@@ -56,7 +56,7 @@ _results = sorted(
 if not _results:
     raise FileNotFoundError(
         f"No results found in {cfg.FILES['output']['results_dir']}\n"
-        "Run `python run.py` first."
+        "Run `python run_index.py` first."
     )
 RESULTS_FILE    = _results[0]
 TIPOLOGIAS_FILE = cfg.RAW_DIR / "ibge" / "tipologias" / "tipologias_municipios_brasil.csv"

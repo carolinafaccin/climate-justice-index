@@ -36,7 +36,7 @@ _results = sorted(
 if not _results:
     raise FileNotFoundError(
         f"No results found in:\n  {cfg.FILES['output']['results_dir']}\n"
-        "Run `python run.py` first to generate the results."
+        "Run `python run_index.py` first to generate the results."
     )
 RESULTS_FILE = _results[0]
 
