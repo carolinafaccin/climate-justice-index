@@ -48,8 +48,9 @@ IMGS_DIR   = DOCS_DIR / "imgs"
 ASSETS_DIR = DOCS_DIR / "assets"
 TMPL_DIR   = SCRIPT_DIR / "templates"
 
-MUNICIPALITIES_GPKG = cfg.RAW_DIR / "ibge" / "malha_municipal" / "2024" / "municipios.gpkg"
-TIPOLOGIAS_CSV      = cfg.RAW_DIR / "ibge" / "tipologias" / "tipologias_municipios_brasil.csv"
+MUNICIPALITIES_GPKG  = cfg.RAW_DIR / "ibge" / "malha_municipal" / "2024" / "municipios.gpkg"
+TIPOLOGIAS_CSV       = cfg.RAW_DIR / "ibge" / "tipologias" / "tipologias_municipios_brasil.csv"
+COASTAL_MUNS_CSV     = cfg.RAW_DIR / "ibge" / "malha_municipal" / "2024" / "municipios_defrontantes_com_o_mar.csv"
 
 with open(PROJECT_ROOT / "config" / "cities.json", encoding="utf-8") as _f:
     CITIES = json.load(_f)["cities"]
@@ -133,6 +134,17 @@ def _iic_colors() -> list:
 # ==============================================================================
 # TIPOLOGIAS + PORTE QUINTILES
 # ==============================================================================
+def load_coastal_muns() -> set[str]:
+    """Returns set of cd_mun (7-digit strings) for coastal municipalities."""
+    if not COASTAL_MUNS_CSV.exists():
+        print(f"  [WARNING] Coastal municipalities CSV not found: {COASTAL_MUNS_CSV}")
+        return set()
+    df = pd.read_csv(COASTAL_MUNS_CSV, sep=";", dtype=str)
+    col = "municipios_defrontantes_com_o_mar"
+    coastal = df[df[col].str.strip().str.lower().isin(["true", "1", "yes", "sim"])]["cd_mun"]
+    return set(coastal.apply(lambda x: str(int(float(x))).zfill(7)))
+
+
 def load_porte_map() -> dict[str, str]:
     """Returns {cd_mun_7digits: porte_munic}."""
     if not TIPOLOGIAS_CSV.exists():
@@ -456,6 +468,7 @@ def generate_city(
     municipalities: gpd.GeoDataFrame | None,
     porte_map: dict[str, str],
     quintile_data: dict,
+    coastal_muns: set[str] | None = None,
 ) -> dict | None:
     nm_mun = city_row["nm_mun"]
     nm_uf  = city_row["nm_uf"]
@@ -509,6 +522,10 @@ def generate_city(
         inds_data: dict = {}
         for ind_key in cfg.DIMENSIONS[dim_key]:
             if ind_key not in df.columns:
+                continue
+            # e3 (sea-level rise) is only applicable to coastal municipalities
+            if ind_key == "e3" and coastal_muns is not None and cd_str not in coastal_muns:
+                print(f"  {abbr}/{ind_key} skipped — {nm_mun} is not a coastal municipality")
                 continue
             ind_vals = df[ind_key].dropna().values
             if len(ind_vals) == 0:
@@ -1079,6 +1096,10 @@ def main() -> None:
     nat     = compute_national_stats(df_full)
     muns    = load_municipalities()
 
+    print("\nLoading coastal municipalities...")
+    coastal_muns = load_coastal_muns()
+    print(f"  {len(coastal_muns):,} coastal municipalities loaded.")
+
     print("\nLoading porte_munic mapping...")
     porte_map = load_porte_map()
     print(f"  {len(porte_map):,} municipalities mapped.")
@@ -1097,7 +1118,7 @@ def main() -> None:
 
     cities_data = []
     for city_row in CITIES:
-        data = generate_city(city_row, df_full, nat, muns, porte_map, quintile_data)
+        data = generate_city(city_row, df_full, nat, muns, porte_map, quintile_data, coastal_muns)
         if data:
             cities_data.append(data)
 

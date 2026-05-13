@@ -17,15 +17,6 @@ from src import config as cfg
 from src import utils
 
 # ==============================================================================
-# 0. CONFIGURATION
-# ==============================================================================
-# True  → Option B: normalise both anomaly AND qtd_dom before multiplying [0,1]×[0,1]
-#          Result: high score only where both heat AND households are high
-# False → Option A: normalise anomaly only [0,1], multiply by raw qtd_dom
-#          Result: magnitude in "heat-weighted households"
-NORMALIZE_DOM = True
-
-# ==============================================================================
 # 1. PATHS
 # ==============================================================================
 GEE_DIR = cfg.RAW_DIR / cfg.INDICATORS["e4"]["source"]["dir"]
@@ -82,36 +73,21 @@ def main():
     df_all["anomalia_temp"] = pd.to_numeric(df_all["anomalia_temp"], errors="coerce")
     df_all["qtd_dom"]      = pd.to_numeric(df_all["qtd_dom"],      errors="coerce").fillna(0)
 
-    # Normalize heat anomaly to [0,1] (winsorized at p95)
-    anomalia_clipped = df_all["anomalia_temp"].clip(lower=0)
-    p95_anomalia     = anomalia_clipped.quantile(0.95)
-    if p95_anomalia == 0:
-        print("   WARNING: p95 of heat anomaly is 0 — no positive anomaly detected. e4 will be all zeros.")
-        anomalia_norm = pd.Series(0.0, index=df_all.index)
-    else:
-        anomalia_norm = (anomalia_clipped / p95_anomalia).clip(upper=1)
-
-    if NORMALIZE_DOM:
-        # Option B: also normalise qtd_dom → score [0,1]×[0,1], high only where both are high
-        p95_dom      = df_all["qtd_dom"].quantile(0.95)
-        qtd_dom_term = (df_all["qtd_dom"] / p95_dom).clip(upper=1)
-        print(f"   Mode: NORMALIZE_DOM=True  (Option B — anomalia_norm × qtd_dom_norm)")
-    else:
-        # Option A: raw qtd_dom → score in "heat-weighted households"
-        qtd_dom_term = df_all["qtd_dom"]
-        print(f"   Mode: NORMALIZE_DOM=False (Option A — anomalia_norm × qtd_dom)")
-
-    df_all[col_e4_abs] = anomalia_norm * qtd_dom_term
+    # Positive anomaly only; uninhabited hexagons score 0 (no human exposure to heat).
+    # Household count is NOT used as a multiplier — density weighting belongs in IP/IV,
+    # not in the exposure indicator itself.
+    anomalia_clipped   = df_all["anomalia_temp"].clip(lower=0)
+    df_all[col_e4_abs] = anomalia_clipped.where(df_all["qtd_dom"] > 0, other=0.0)
 
     # e4_norm: min-max with winsorization
     df_all[col_e4_norm] = utils.normalize_minmax(df_all[col_e4_abs], winsorize=True)
 
-    n_warming   = (df_all[col_e4_abs] > 0).sum()
-    n_stable    = (df_all[col_e4_abs] == 0).sum()
-    n_null      = df_all[col_e4_abs].isna().sum()
-    print(f"   Hexagons with exposure (anomaly > 0 and qtd_dom > 0): {n_warming:,}")
-    print(f"   Hexagons with no exposure (cooling or uninhabited):    {n_stable:,}")
-    print(f"   Hexagons without data (NaN):                          {n_null:,}")
+    n_exposure = (df_all[col_e4_abs] > 0).sum()
+    n_none     = (df_all[col_e4_abs] == 0).sum()
+    n_null     = df_all[col_e4_abs].isna().sum()
+    print(f"   Hexagons with heat exposure (inhabited + anomaly > 0): {n_exposure:,}")
+    print(f"   Hexagons with no exposure (cooling, stable, or uninhabited): {n_none:,}")
+    print(f"   Hexagons without data (NaN): {n_null:,}")
 
     # ==============================================================================
     # 4. MERGE WITH H3 BASE AND SAVE
@@ -194,7 +170,6 @@ def _write_figures(df_final):
     DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
     CMAP = "YlOrRd"
-    _mode_tag = "B" if NORMALIZE_DOM else "A"
     _PALETTE = ["#1f77b4", "#d62728", "#2ca02c", "#ff7f0e", "#9467bd", "#8c564b"]
 
     _cities_path = cfg.BASE_DIR / "config" / "cities.json"
@@ -260,12 +235,12 @@ def _write_figures(df_final):
         ax.set_xlim(minx - pad_x, maxx + pad_x)
         ax.set_ylim(miny - pad_y, maxy + pad_y)
         ax.set_title(
-            f"Indicator e4 — Extreme Heat (Option {_mode_tag})\n"
+            f"Indicator e4 — Extreme Heat (Option {"heat"})\n"
             f"{col_e4_norm}  |  {label}",
             fontsize=12,
         )
         ax.axis("off")
-        out = DEBUG_DIR / f"e4_cal_{safe}_op{_mode_tag}_{now}.png"
+        out = DEBUG_DIR / f"e4_cal_{safe}_op{"heat"}_{now}.png"
         fig.savefig(out, dpi=200, bbox_inches="tight")
         plt.close(fig)
         print(f"  ✓ {label}: {out.name}")
@@ -303,9 +278,9 @@ def _write_figures(df_final):
     ax.axvline(0.5, color="black", linestyle=":", linewidth=1.2, label="threshold 0.5")
     ax.set_xlabel(f"{col_e4_norm}  (0 = lower exposure, 1 = higher)")
     ax.set_ylabel("Density")
-    ax.set_title(f"Distribution of {col_e4_norm} — Extreme Heat (Option {_mode_tag})")
+    ax.set_title(f"Distribution of {col_e4_norm} — Extreme Heat (Option {"heat"})")
     ax.legend()
-    out_dist = DEBUG_DIR / f"e4_cal_distribuicao_op{_mode_tag}_{now}.png"
+    out_dist = DEBUG_DIR / f"e4_cal_distribuicao_op{"heat"}_{now}.png"
     fig.savefig(out_dist, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"  ✓ Distribuição: {out_dist.name}")

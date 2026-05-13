@@ -171,7 +171,7 @@
           "name": "calor",
           "abbr": "cal",
           "display_name": "Calor extremo",
-          "description": "Anomalia positiva de temperatura de superfície (LST) entre o período recente (2015–2024) e a média histórica (1985–2010), ponderada pela quantidade de domicílios por hexágono",
+          "description": "Anomalia positiva de temperatura de superfície (LST) em hexágonos habitados, calculada como a diferença entre a média do período recente (2015–2024) e a média histórica de referência (1985–2010)",
           "source": {
             "dir": "gee/anomalia_calor_1985-2025"
           }
@@ -180,7 +180,7 @@
           "name": "queimadas",
           "abbr": "que",
           "display_name": "Focos de queimadas",
-          "description": "Percentual de domicílios em áreas com até 1 km de proximidade de focos de queimadas",
+          "description": "Fração de anos (2016–2025) com focos de queimadas na vizinhança (~1 km) do hexágono, restrita a hexágonos habitados",
           "source": {
             "dir": "inpe/queimadas"
           }

@@ -95,10 +95,12 @@ def main():
         on="h3_id", how="left"
     )
 
-    # Inland hexagons (not in coastal CSVs) are not at risk → fill with 0
-    df_final[[col_e3_abs, col_e3_norm]] = df_final[[col_e3_abs, col_e3_norm]].fillna(0)
+    # Non-coastal hexagons (not in any coastal UF CSV) remain NaN — not applicable,
+    # not "zero risk". formulas._nanmean_cols skips NaN so e3 is excluded from IE
+    # mean for inland hexagons rather than pulling it down with a structural zero.
 
     print(f"   Hexagons with households at risk: {(df_final[col_e3_abs] > 0).sum():,}")
+    print(f"   Hexagons without e3 data (non-coastal): {df_final[col_e3_abs].isna().sum():,}")
 
     print("\n4/4 - Saving parquet...")
     utils.save_parquet(df_final, cfg.FILES_H3["e3"])
@@ -126,7 +128,7 @@ def _write_diagnostic(df_all, df_final, csv_files):
 
         for col in [col_e3_abs, col_e3_norm]:
             s = df_final[col]
-            f.write(f"--- {col} (full grid, inland=0) ---\n")
+            f.write(f"--- {col} (full grid, inland=NaN) ---\n")
             f.write(f"  mean   = {s.mean():.6f}\n")
             f.write(f"  median = {s.median():.6f}\n")
             f.write(f"  min    = {s.min():.6f}\n")
