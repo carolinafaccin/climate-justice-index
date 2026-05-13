@@ -1,5 +1,9 @@
 # Índice de Injustiça Climática
 
+[![Tests](https://github.com/carolinafaccin/climate-injustice-index/actions/workflows/tests.yml/badge.svg)](https://github.com/carolinafaccin/climate-injustice-index/actions/workflows/tests.yml)
+[![Docs](https://img.shields.io/badge/docs-online-blue?logo=github)](https://carolinafaccin.github.io/climate-injustice-index/)
+[![Python](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+
 Projeto de dados para mensurar desigualdades territoriais e injustiças climáticas nos municípios brasileiros, produzido pelo WRI Brasil.
 
 O índice combina exposição a riscos climáticos, vulnerabilidade socioeconômica, grupos populacionais prioritários e capacidade de gestão municipal em uma grade hexagonal H3 (resolução 9, ~0,1 km²).
