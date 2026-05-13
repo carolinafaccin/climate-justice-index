@@ -47,12 +47,11 @@ def main():
     parts = []
     for path in csv_files:
         try:
-            df = pd.read_csv(path, usecols=["h3_id", "anomalia_temp", "qtd_dom"])
+            df = pd.read_csv(path, usecols=["h3_id", "anomalia_temp"])
         except ValueError:
-            # fallback: read all columns and select manually
             df = pd.read_csv(path)
             df.columns = df.columns.str.lower()
-            df = df[["h3_id", "anomalia_temp", "qtd_dom"]]
+            df = df[["h3_id", "anomalia_temp"]]
         parts.append(df)
         print(f"   ✓ {path.name}  ({len(df):,} hexagons)")
 
@@ -71,22 +70,18 @@ def main():
     print("\n2/4 - Calculating indicator...")
 
     df_all["anomalia_temp"] = pd.to_numeric(df_all["anomalia_temp"], errors="coerce")
-    df_all["qtd_dom"]      = pd.to_numeric(df_all["qtd_dom"],      errors="coerce").fillna(0)
 
-    # Positive anomaly only; uninhabited hexagons score 0 (no human exposure to heat).
+    # All hexagons in the base grid have at least 1 household (br_h3_res9 is inhabited-only).
     # Household count is NOT used as a multiplier — density weighting belongs in IP/IV,
     # not in the exposure indicator itself.
-    anomalia_clipped   = df_all["anomalia_temp"].clip(lower=0)
-    df_all[col_e4_abs] = anomalia_clipped.where(df_all["qtd_dom"] > 0, other=0.0)
-
-    # e4_norm: min-max with winsorization
+    df_all[col_e4_abs]  = df_all["anomalia_temp"].clip(lower=0)
     df_all[col_e4_norm] = utils.normalize_minmax(df_all[col_e4_abs], winsorize=True)
 
     n_exposure = (df_all[col_e4_abs] > 0).sum()
     n_none     = (df_all[col_e4_abs] == 0).sum()
     n_null     = df_all[col_e4_abs].isna().sum()
-    print(f"   Hexagons with heat exposure (inhabited + anomaly > 0): {n_exposure:,}")
-    print(f"   Hexagons with no exposure (cooling, stable, or uninhabited): {n_none:,}")
+    print(f"   Hexagons with positive heat anomaly: {n_exposure:,}")
+    print(f"   Hexagons with no anomaly (cooling or stable): {n_none:,}")
     print(f"   Hexagons without data (NaN): {n_null:,}")
 
     # ==============================================================================
@@ -135,13 +130,6 @@ def _write_diagnostic(df_all, df_final, csv_files):
         f.write(f"  < 0    = {(s_raw < 0).sum():,} hexagons\n")
         f.write(f"  = 0    = {(s_raw == 0).sum():,} hexagons\n")
         f.write(f"  > 0    = {(s_raw > 0).sum():,} hexagons\n\n")
-
-        f.write("--- qtd_dom (households per hexagon) ---\n")
-        s_dom = df_all["qtd_dom"]
-        f.write(f"  sum    = {s_dom.sum():,.0f} households\n")
-        f.write(f"  mean   = {s_dom.mean():.2f}\n")
-        f.write(f"  median = {s_dom.median():.2f}\n")
-        f.write(f"  zeros  = {(s_dom == 0).sum():,} hexagons\n\n")
 
         for col in [col_e4_abs, col_e4_norm]:
             s = df_final[col].dropna()

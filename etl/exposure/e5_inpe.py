@@ -51,9 +51,8 @@ def main():
     print(f"Years: {ANOS[0]}–{ANOS[-1]}  |  k-ring: {K_RING} (~1 km)")
     print("=" * 60)
 
-    # Load H3 base (with qtd_dom for household weighting)
     print("\n1/4 - Loading H3 base grid...")
-    df_h3 = pd.read_parquet(cfg.FILES_H3["base_metadata"], columns=["h3_id", "qtd_dom"])
+    df_h3 = pd.read_parquet(cfg.FILES_H3["base_metadata"], columns=["h3_id"])
     all_h3 = set(df_h3["h3_id"].values)
     print(f"   {len(all_h3):,} hexagons in base grid.")
 
@@ -106,20 +105,14 @@ def main():
     # Fraction of years with fire exposure in the neighbourhood (0–1)
     frac = df_agg["anos_expostos"] / n_years
 
-    # Bring in qtd_dom for household weighting
-    df_agg = df_agg.merge(df_h3[["h3_id", "qtd_dom"]], on="h3_id", how="left")
-    df_agg["qtd_dom"] = pd.to_numeric(df_agg["qtd_dom"], errors="coerce").fillna(0)
-
-    # Fire fraction 0-1; uninhabited hexagons score 0 (no human exposure to fire).
+    # All hexagons in the base grid have at least 1 household (br_h3_res9 is inhabited-only).
     # Household count is NOT used as a multiplier — density weighting belongs in IP/IV,
     # not in the exposure indicator itself.
-    df_agg[col_e5_abs]  = frac.where(df_agg["qtd_dom"] > 0, other=0.0)
+    df_agg[col_e5_abs]  = frac
     df_agg[col_e5_norm] = utils.normalize_minmax(df_agg[col_e5_abs], winsorize=True)
 
-    n_exposed     = (df_agg[col_e5_abs] > 0).sum()
-    n_uninhabited = (df_agg["qtd_dom"] == 0).sum()
-    print(f"   Hexagons with fire exposure (inhabited + frac > 0): {n_exposed:,}")
-    print(f"   Hexagons uninhabited (qtd_dom = 0):                 {n_uninhabited:,}")
+    n_exposed = (df_agg[col_e5_abs] > 0).sum()
+    print(f"   Hexagons with fire exposure (frac > 0): {n_exposed:,}")
 
     # Merge with H3 base and save
     print("4/4 - Saving parquet...")
@@ -151,12 +144,6 @@ def _write_diagnostic(df_agg, df_final, n_years, year_exposure):
         for v, c in dist.items():
             f.write(f"  {v:2d} years: {c:,} hexagons\n")
 
-        f.write(f"\n--- qtd_dom (households per hexagon) ---\n")
-        s_dom = df_agg["qtd_dom"]
-        f.write(f"  sum    = {s_dom.sum():,.0f} households\n")
-        f.write(f"  mean   = {s_dom.mean():.2f}\n")
-        f.write(f"  median = {s_dom.median():.2f}\n")
-        f.write(f"  zeros  = {(s_dom == 0).sum():,} hexagons\n\n")
 
         f.write(f"\n--- {col_e5_abs} ---\n")
         s = df_final[col_e5_abs].dropna()
