@@ -350,19 +350,24 @@ def _save_overview_figure(
     ax_rad.fill(angles, nv, alpha=0.12, color="#888", zorder=1)
     ax_rad.set_xticks(angles[:-1])
     ax_rad.set_xticklabels(dim_labels, size=8)
-    ax_rad.set_ylim(0, 1)
-    ax_rad.set_yticks([0.2, 0.4, 0.6, 0.8])
-    ax_rad.set_yticklabels(["0.2", "0.4", "0.6", "0.8"], size=5.5)
+    rad_max = min(round(max(city_dim_means + national_dim_means) * 1.15, 1), 1.0)
+    rad_ticks = [v for v in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9] if v < rad_max]
+    ax_rad.set_ylim(0, rad_max)
+    ax_rad.set_yticks(rad_ticks)
+    ax_rad.set_yticklabels([f"{v:.1f}" for v in rad_ticks], size=5.5)
     ax_rad.legend(loc="upper right", bbox_to_anchor=(1.3, 1.15), fontsize=7.5)
     ax_rad.set_title("Perfil por Dimensão", fontsize=8.5, pad=8)
 
-    # Bottom right: IIC histogram
-    ax_hist.hist(iic_vals, bins=25, range=(0, 1), color="#fde68a", edgecolor="none", alpha=0.85)
+    # Bottom right: IIC histogram — x-axis adapts to actual data range
+    iic_valid = iic_vals[~np.isnan(iic_vals)]
+    x_max = min(round(float(np.percentile(iic_valid, 99)) * 1.1 + 0.05, 1), 1.0)
+    x_max = max(x_max, iic_mean * 1.2)  # always show the city mean with room
+    ax_hist.hist(iic_valid, bins=25, range=(0, x_max), color="#fde68a", edgecolor="none", alpha=0.85)
     ax_hist.axvline(iic_mean,     color=WRI_YELLOW, lw=2,   label=f"Município: {iic_mean:.3f}")
     ax_hist.axvline(nat_iic_mean, color="#444444",  lw=1.5, ls="--", label=f"Brasil: {nat_iic_mean:.3f}")
     ax_hist.set_xlabel("IIC Final", fontsize=8)
     ax_hist.set_ylabel("Hexágonos", fontsize=8)
-    ax_hist.set_xlim(0, 1)
+    ax_hist.set_xlim(0, x_max)
     ax_hist.tick_params(labelsize=7)
     ax_hist.legend(fontsize=7.5, framealpha=0.85)
     ax_hist.spines[["top", "right"]].set_visible(False)
