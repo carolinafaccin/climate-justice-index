@@ -1,17 +1,16 @@
 import sys
 import logging
-from src import pipeline
-from src import utils # Importing utils to access the logging setup
+from src import calculation
+from src import utils
 
 def main():
-    # 1. ACTIVATE LOGS FIRST!
     utils.setup_logging()
     logger = logging.getLogger("MAIN")
-    
+
     logger.info(">>> STARTING CLIMATE INJUSTICE INDEX CALCULATION <<<")
 
     try:
-        pipeline.run()
+        calculation.run()
 
         logger.info(">>> PROCESS COMPLETED SUCCESSFULLY! <<<")
         logger.info("Check the 'data/outputs/results/' folder for generated files.")

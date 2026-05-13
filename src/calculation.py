@@ -6,7 +6,7 @@ from datetime import datetime
 # Internal imports
 from . import config as cfg
 from . import utils
-from . import calculations as calc
+from . import formulas as calc
 
 def validate_inputs(files_dict: dict) -> list:
     """Check all indicator files exist. Returns list of missing indicator keys."""
