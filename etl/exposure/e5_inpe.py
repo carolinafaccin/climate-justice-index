@@ -23,6 +23,7 @@ from src import utils
 QUEIMADAS_DIR = cfg.RAW_DIR / cfg.INDICATORS["e5"]["source"]["dir"]
 ANOS          = list(range(2016, 2026))   # 2016–2025
 K_RING        = 4                         # ~1 km buffer in H3 res9
+MIN_YEARS     = 2                         # minimum years of recurrent exposure to score > 0
 
 H3_RES = cfg.H3_RES
 
@@ -105,14 +106,17 @@ def main():
     # Fraction of years with fire exposure in the neighbourhood (0–1)
     frac = df_agg["anos_expostos"] / n_years
 
-    # All hexagons in the base grid have at least 1 household (br_h3_res9 is inhabited-only).
-    # Household count is NOT used as a multiplier — density weighting belongs in IP/IV,
-    # not in the exposure indicator itself.
-    df_agg[col_e5_abs]  = frac
+    # Threshold: only hexagons with recurrent fire exposure (≥ 2 out of 10 years = frac ≥ 0.2)
+    # are considered at risk. Sporadic events (1 year only) are zeroed out to avoid noise
+    # from isolated incidents that do not represent chronic climate risk.
+    MIN_FRAC = MIN_YEARS / len(ANOS)  # e.g. 2/10 = 0.2
+    df_agg[col_e5_abs]  = frac.where(frac >= MIN_FRAC, other=0.0)
     df_agg[col_e5_norm] = utils.normalize_minmax(df_agg[col_e5_abs], winsorize=True)
 
-    n_exposed = (df_agg[col_e5_abs] > 0).sum()
-    print(f"   Hexagons with fire exposure (frac > 0): {n_exposed:,}")
+    n_exposed  = (df_agg[col_e5_abs] > 0).sum()
+    n_sporadic = ((frac > 0) & (frac < MIN_FRAC)).sum()
+    print(f"   Hexagons with recurrent fire exposure (frac ≥ {MIN_FRAC:.1f}): {n_exposed:,}")
+    print(f"   Hexagons with sporadic exposure only (zeroed out):          {n_sporadic:,}")
 
     # Merge with H3 base and save
     print("4/4 - Saving parquet...")
