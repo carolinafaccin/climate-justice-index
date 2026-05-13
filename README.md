@@ -73,8 +73,6 @@ explore/
 └── utils.py                  # Utilitários compartilhados pelos scripts de explore/
 
 report/                       # Geração do relatório HTML
-archive/                      # Código experimental e descontinuado
-data/                         # Dados de entrada e saída (gitignored)
 logs/                         # Logs de execução (gitignored)
 ```
 
