@@ -25,11 +25,11 @@ from shapely.geometry import Polygon
 from tqdm import tqdm
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = SCRIPT_DIR.parent
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 from src import config as cfg
 
-GPKG_DIR = cfg.RESULTS_DIR / "gpkg"
+GPKG_DIR = cfg.FILES['output']['gpkg_dir']
 
 # Number of parallel workers for H3 → polygon conversion.
 # Defaults to half the available CPUs to avoid overloading the machine.
@@ -126,7 +126,7 @@ def main() -> None:
     setup_logging()
     log = logging.getLogger(__name__)
 
-    results_dir: Path = cfg.RESULTS_DIR
+    results_dir: Path = cfg.FILES['output']['results_dir']
     log.info(f"data_dir  : {cfg.DATA_DIR}")
     log.info(f"results   : {results_dir}")
     log.info(f"gpkg out  : {GPKG_DIR}")

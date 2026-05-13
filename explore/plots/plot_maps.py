@@ -30,9 +30,9 @@ import geopandas as gpd
 from pathlib import Path
 
 SCRIPT_DIR   = Path(__file__).resolve().parent
-PROJECT_ROOT = SCRIPT_DIR.parent
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(SCRIPT_DIR))
+sys.path.insert(0, str(SCRIPT_DIR.parent))
 from src import config as cfg
 import utils as diag_utils
 
@@ -55,7 +55,7 @@ with open(PROJECT_ROOT / "config" / "cities.json", encoding="utf-8") as _f:
 # Most recent final IIC parquet (exclude dashboard variants)
 _results = sorted(
     [
-        p for p in cfg.RESULTS_DIR.glob("br_h3_iic_v2_0_*.parquet")
+        p for p in cfg.FILES['output']['results_dir'].glob("br_h3_iic_v2_0_*.parquet")
         if "dashboard" not in p.name
     ],
     key=lambda p: p.stat().st_mtime,
@@ -63,8 +63,8 @@ _results = sorted(
 )
 if not _results:
     raise FileNotFoundError(
-        f"No results found in:\n  {cfg.RESULTS_DIR}\n"
-        "Run `python run.py` first to generate the results."
+        f"No results found in:\n  {cfg.FILES['output']['results_dir']}\n"
+        "Run `python run_index.py` first to generate the results."
     )
 RESULTS_FILE = _results[0]
 
