@@ -180,7 +180,7 @@
           "name": "queimadas",
           "abbr": "que",
           "display_name": "Focos de queimadas",
-          "description": "Fração de anos (2016–2025) com focos de queimadas na vizinhança (~1 km) do hexágono, restrita a hexágonos habitados",
+          "description": "Fração de anos (2016–2025) com focos de queimadas na vizinhança (~600 m) do hexágono, considerando apenas exposição recorrente (≥ 2 anos dos 10), restrita a hexágonos habitados",
           "source": {
             "dir": "inpe/queimadas"
           }

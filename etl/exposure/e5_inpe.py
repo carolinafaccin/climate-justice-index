@@ -22,7 +22,7 @@ from src import utils
 # ==============================================================================
 QUEIMADAS_DIR = cfg.RAW_DIR / cfg.INDICATORS["e5"]["source"]["dir"]
 ANOS          = list(range(2016, 2026))   # 2016–2025
-K_RING        = 4                         # ~1 km buffer in H3 res9
+K_RING        = 2                         # ~600 m buffer in H3 res9 (calibrated for VIIRS 375 m pixels)
 MIN_YEARS     = 2                         # minimum years of recurrent exposure to score > 0
 
 H3_RES = cfg.H3_RES
