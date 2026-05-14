@@ -142,20 +142,18 @@
           "name": "deslizamentos",
           "abbr": "des",
           "display_name": "Deslizamentos de terra",
-          "description": "Percentual de domicílios em áreas com suscetibilidade a deslizamentos de terra",
+          "description": "Fração da área do hexágono com declividade Alta (35–60%) ou Média (25–35% e 60–75%), conforme metodologia CPRM/IPT aplicada no Vale do Taquari — proxy de suscetibilidade a deslizamentos via Copernicus GLO-30 DEM",
           "source": {
-            "file": "mapbiomas/mapbiomas_landslides_2024.tif",
-            "cnefe_dir": "ibge/censo/2022/cnefe/cnefe_csv/por_uf"
+            "dir": "gee/suscetibilidade-deslizamentos-slope-v1"
           }
         },
         "e2": {
           "name": "inundacoes",
           "abbr": "inu",
           "display_name": "Inundações, alagamentos e enxurradas",
-          "description": "Percentual de domicílios em áreas com suscetibilidade a inundações, alagamentos e enxurradas",
+          "description": "Score médio por hexágono combinando HAND classificado (0–2m=1.00, 2–4m=0.66, 4–6m=0.33) e JRC Global River Flood Hazard (return period 100 anos), seguindo metodologia adaptada do MapBiomas Risco Climático sem máscara urbana — cobertura nacional",
           "source": {
-            "file": "mapbiomas/mapbiomas_floods_2024.tif",
-            "cnefe_dir": "ibge/censo/2022/cnefe/cnefe_csv/por_uf"
+            "dir": "gee/suscetibilidade-inundacoes-hand-jrc-v1"
           }
         },
         "e3": {
