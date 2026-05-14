@@ -358,7 +358,7 @@ def _save_overview_figure(
     nv     = national_dim_means + national_dim_means[:1]
     ax_rad.plot(angles, cv, "o-", color=WRI_YELLOW, lw=2, label=city_name, zorder=3)
     ax_rad.fill(angles, cv, alpha=0.25, color=WRI_YELLOW, zorder=2)
-    ax_rad.plot(angles, nv, "o-", color="#888", lw=1.5, ls="--", label="Brasil", zorder=3)
+    ax_rad.plot(angles, nv, "o--", color="#888", lw=1.5, label="Brasil", zorder=3)
     ax_rad.fill(angles, nv, alpha=0.12, color="#888", zorder=1)
     ax_rad.set_xticks(angles[:-1])
     ax_rad.set_xticklabels(dim_labels, size=8)
