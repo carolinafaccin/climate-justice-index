@@ -362,24 +362,19 @@ def _save_overview_figure(
     ax_rad.fill(angles, nv, alpha=0.12, color="#888", zorder=1)
     ax_rad.set_xticks(angles[:-1])
     ax_rad.set_xticklabels(dim_labels, size=8)
-    rad_max = min(round(max(city_dim_means + national_dim_means) * 1.15, 1), 1.0)
-    rad_ticks = [v for v in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9] if v < rad_max]
-    ax_rad.set_ylim(0, rad_max)
-    ax_rad.set_yticks(rad_ticks)
-    ax_rad.set_yticklabels([f"{v:.1f}" for v in rad_ticks], size=5.5)
+    ax_rad.set_ylim(0, 1)
+    ax_rad.set_yticks([0.2, 0.4, 0.6, 0.8])
+    ax_rad.set_yticklabels(["0.2", "0.4", "0.6", "0.8"], size=5.5)
     ax_rad.legend(loc="upper right", bbox_to_anchor=(1.3, 1.15), fontsize=7.5)
     ax_rad.set_title("Perfil por Dimensão", fontsize=8.5, pad=8)
 
-    # Bottom right: IIC histogram — x-axis adapts to actual data range
-    iic_valid = iic_vals[~np.isnan(iic_vals)]
-    x_max = min(round(float(np.percentile(iic_valid, 99)) * 1.1 + 0.05, 1), 1.0)
-    x_max = max(x_max, iic_mean * 1.2)  # always show the city mean with room
-    ax_hist.hist(iic_valid, bins=25, range=(0, x_max), color="#fde68a", edgecolor="none", alpha=0.85)
+    # Bottom right: IIC histogram
+    ax_hist.hist(iic_vals, bins=25, range=(0, 1), color="#fde68a", edgecolor="none", alpha=0.85)
     ax_hist.axvline(iic_mean,     color=WRI_YELLOW, lw=2,   label=f"Município: {iic_mean:.3f}")
     ax_hist.axvline(nat_iic_mean, color="#444444",  lw=1.5, ls="--", label=f"Brasil: {nat_iic_mean:.3f}")
     ax_hist.set_xlabel("IIC Final", fontsize=8)
     ax_hist.set_ylabel("Hexágonos", fontsize=8)
-    ax_hist.set_xlim(0, x_max)
+    ax_hist.set_xlim(0, 1)
     ax_hist.tick_params(labelsize=7)
     ax_hist.legend(fontsize=7.5, framealpha=0.85)
     ax_hist.spines[["top", "right"]].set_visible(False)
@@ -611,7 +606,7 @@ def _save_national_distribution(df_full: pd.DataFrame, nat_iic_mean: float, out_
 def _build_sankey_json() -> str:
     ip_w = round(25 / 5, 4)   # 5.0
     iv_w = round(25 / 5, 4)   # 5.0
-    ie_w = round(25 / 6, 4)   # 4.1667
+    ie_w = round(25 / 5, 4)   # 5.0
     ig_w = round(25 / 8, 4)   # 3.125
 
     node_labels = [
@@ -623,11 +618,10 @@ def _build_sankey_json() -> str:
         "Indígenas e quilombolas", "Idosos (60 anos ou mais)", "Crianças (9 anos ou menos)",
         # IV (10–14)
         "Baixa renda", "Moradia precária", "Educação", "Acesso à saúde", "Infraestrutura",
-        # IE (15–20)
+        # IE (15–19)
         "Deslizamentos de terra", "Inundações, alagamentos e enxurradas",
         "Elevação do nível do mar", "Calor extremo", "Focos de queimadas",
-        "Seca e estiagem",
-        # IG (21–28)
+        # IG (20–27)
         "Investimento", "Planejamento", "Participação", "Governança",
         "Resposta", "Informação", "Reconhecimento", "Reparação",
     ]
@@ -636,25 +630,25 @@ def _build_sankey_json() -> str:
         + ["#eb8026", "#3855a3", "#32864b", "#9b216c"]   # dims
         + ["#f5c896"] * 5         # IP indicators
         + ["#adb8dc"] * 5         # IV indicators
-        + ["#a2cbb0"] * 6         # IE indicators (6 agora)
+        + ["#a2cbb0"] * 5         # IE indicators
         + ["#d4a3be"] * 8         # IG indicators
     )
 
     # Flow: indicators → dimensions → IIC
-    tgt = [0,0,0,0] + [1]*5 + [2]*5 + [3]*6 + [4]*8
+    tgt = [0,0,0,0] + [1]*5 + [2]*5 + [3]*5 + [4]*8
     src = (
         [1,2,3,4]
         + list(range(5,10)) + list(range(10,15))
-        + list(range(15,21)) + list(range(21,29))
+        + list(range(15,20)) + list(range(20,28))
     )
     val = ([25]*4
-           + [ip_w]*5 + [iv_w]*5 + [ie_w]*6 + [ig_w]*8)
+           + [ip_w]*5 + [iv_w]*5 + [ie_w]*5 + [ig_w]*8)
     lnk_colors = (
         ["rgba(235,128,38,0.4)", "rgba(56,85,163,0.4)",
          "rgba(50,134,75,0.4)", "rgba(155,33,108,0.4)"]
         + ["rgba(235,128,38,0.22)"] * 5
         + ["rgba(56,85,163,0.22)"]  * 5
-        + ["rgba(50,134,75,0.22)"]  * 6
+        + ["rgba(50,134,75,0.22)"]  * 5
         + ["rgba(155,33,108,0.22)"] * 8
     )
 

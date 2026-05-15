@@ -142,7 +142,7 @@
           "name": "deslizamentos",
           "abbr": "des",
           "display_name": "Deslizamentos de terra",
-          "description": "Fração da área do hexágono em classe High ou Very High do NASA LHASA Global Landslide Susceptibility Map (Stanley & Kirschbaum 2017) — modelo multicritério combinando slope, geologia, perda de floresta, distância a falhas e densidade de estradas",
+          "description": "Fração da área do hexágono em zona de alta ou muito alta suscetibilidade a deslizamentos de terra, restrita a hexágonos habitados",
           "source": {
             "dir": "gee/suscetibilidade-deslizamentos-lhasa-v1"
           }
@@ -151,7 +151,7 @@
           "name": "inundacoes",
           "abbr": "inu",
           "display_name": "Inundações, alagamentos e enxurradas",
-          "description": "Score médio por hexágono combinando HAND classificado (0–2m=1.00, 2–4m=0.66, 4–6m=0.33) e JRC Global River Flood Hazard (return period 100 anos)",
+          "description": "Suscetibilidade média a inundações por hexágono, combinando altura do terreno acima dos canais de drenagem e perigo modelado para período de retorno de 100 anos, restrita a hexágonos habitados",
           "source": {
             "dir": "gee/suscetibilidade-inundacoes-hand-jrc-v1"
           }
@@ -181,15 +181,6 @@
           "description": "Fração de anos (2016–2025) com focos de queimadas na vizinhança (~600 m) do hexágono, considerando apenas exposição recorrente (≥ 2 anos dos 10), restrita a hexágonos habitados",
           "source": {
             "dir": "inpe/queimadas"
-          }
-        },
-        "e6": {
-          "name": "seca",
-          "abbr": "sec",
-          "display_name": "Secas",
-          "description": "Fração de meses (2015–2024) em que o SPI-12 (Standardized Precipitation Index de 12 meses, CHIRPS) ficou em categoria de seca severa (SPI ≤ −1,5), comparado à climatologia 1991–2020. Captura recorrência de seca meteorológica anual.",
-          "source": {
-            "dir": "gee/seca_spi_chirps_v1"
           }
         }
       }

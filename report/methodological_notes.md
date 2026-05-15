@@ -48,10 +48,26 @@ Percentual de domicílios sem coleta de esgoto, sem abastecimento de água e/ou 
 
 # Dimensão de Exposição (e1–e5)
 
-### E1 — Deslizamentos de terra / E2 — Inundações *(fonte comum: MapBiomas Risco Climático, Coleção 1, 2024)*:
-E1 mede o percentual de domicílios em áreas de Alta ou Muito Alta suscetibilidade a deslizamentos de terra; E2 mede o mesmo para inundações, alagamentos e enxurradas.
+### E1 — Deslizamentos de terra *(fonte: NASA LHASA / Stanley & Kirschbaum 2017, via Google Earth Engine)*:
+Fração da área de cada hexágono em zona de Alta ou Muito Alta suscetibilidade a deslizamentos de terra, segundo o NASA Global Landslide Susceptibility Map (LHASA).
 
-Ambos utilizam rasters GeoTIFF com resolução de 25 m. As coordenadas de cada domicílio do CNEFE 2022 foram amostradas pontualmente nos rasters do MapBiomas, classificando cada endereço como em área de risco (1) ou fora (0). O indicador de cada hexágono é a proporção de domicílios em risco. Normalização min-max sem winsorização — a winsorização nos percentis 1%–99% colapsaria a distribuição para zero na maior parte do território, dado o caráter geograficamente restrito desses fenômenos.
+O LHASA é um modelo multicritério (fuzzy overlay) que combina cinco variáveis: declividade (slope), litologia, perda de cobertura florestal, densidade de estradas e distância a falhas geológicas. O raster classifica cada pixel (~1 km de resolução) em cinco níveis: 1 (Very Low), 2 (Low), 3 (Moderate), 4 (High) e 5 (Very High). Optou-se por esse modelo em substituição ao método baseado em slope puro porque comparações em escala nacional revelaram correlação negativa entre declividade isolada e ocorrência efetiva de deslizamentos: encostas muito íngremes no Brasil correspondem com frequência a afloramentos rochosos consolidados (baixo risco), enquanto áreas de alto risco real (Amazônia desmatada, encostas tropicais úmidas) têm declividades moderadas.
+
+No GEE, o raster foi processado com `Reducer.mean()` aplicado a um buffer de 174 m (circunraio do H3 res9), gerando duas métricas por hexágono: `lhasa_mean` (valor médio 1–5) e `lhasa_high_frac` (fração da área com LHASA ≥ 4). O indicador E1 utiliza apenas `lhasa_high_frac`. Normalização min-max sem winsorização — a suscetibilidade é geograficamente concentrada (Amazônia + áreas tropicais úmidas com desmatamento) e a winsorização nos percentis 1%–99% colapsaria a cauda para zero na maior parte do território.
+
+### E2 — Inundações *(fonte: HAND global + JRC Global River Flood Hazard v2.1, via Google Earth Engine)*:
+Score médio de suscetibilidade a inundações por hexágono, combinando o modelo de terreno HAND (Height Above Nearest Drainage) com a máscara de perigo do JRC Global River Flood Hazard Maps.
+
+A metodologia é adaptada da Coleção 1 do MapBiomas Risco Climático (2024), removida a máscara de áreas urbanas que limitava o produto original a perímetros do Open Buildings — assim, o indicador alcança cobertura nacional independente de uso da terra. No GEE, cada pixel recebe um score classificado pelo HAND:
+
+| HAND | Score | Interpretação |
+| --- | --- | --- |
+| 0–2 m | 1.00 | Muito alta suscetibilidade |
+| 2–4 m | 0.66 | Alta |
+| 4–6 m | 0.33 | Média |
+| > 6 m | 0.00 | Sem suscetibilidade |
+
+O score é então multiplicado pela máscara binária `JRC RP100_depth > 0` (perigo de inundação modelado para período de retorno de 100 anos), de forma que apenas pixels simultaneamente em planície de inundação (HAND baixo) e em zona de perigo modelado (JRC) recebem score positivo. Pixels mascarados (calha de rios, oceano) contribuem com zero. O score por hexágono é a média dos pixels via `Reducer.mean()` com buffer de 174 m. Normalização min-max sem winsorização — inundações são fenômenos geograficamente concentrados em vales e margens fluviais, e a winsorização colapsaria a cauda para zero na maior parte do território.
 
 ### E3 — Elevação do nível do mar *(fonte: Copernicus GLO-30 / Google Earth Engine)*: 
 Quantidade de domicílios em hexágonos costeiros com elevação ≤ 1 m e distância ao oceano ≤ 10 km, ponderada pela fração de área em risco.
@@ -155,14 +171,17 @@ Referência: dados extraídos em janeiro de 2026. Arquivo: `cnes_estabelecimento
 
 O `capacity_score` de cada estabelecimento é a soma das seis categorias de serviço presentes, acrescida de 1 (mínimo = 1 para todo estabelecimento válido).
 
-## MapBiomas Risco Climático — Coleção 1 (2024)
+## NASA LHASA — Global Landslide Susceptibility Map (Google Earth Engine)
 
-| Produto | Arquivo | Indicador |
-| --- | --- | --- |
-| Áreas urbanas suscetíveis a deslizamentos | `mapbiomas_landslides_2024.tif` | e1 |
-| Áreas urbanas suscetíveis a inundações | `mapbiomas_floods_2024.tif` | e2 |
+Utilizado para o indicador e1. Referência: Stanley, T. & Kirschbaum, D. B. (2017). *A heuristic approach to global landslide susceptibility mapping*. Natural Hazards 87(1): 145–164. Modelo multicritério (fuzzy overlay) que combina slope, litologia, perda de floresta, densidade de estradas e distância a falhas. Resolução nativa: ~1 km (30 arc-seconds). Valores: 1 (Very Low) a 5 (Very High); valor 0 indica NoData/oceano (mascarado no processamento).
 
-Classificação binária: pixels com valor > 0 indicam suscetibilidade Alta ou Muito Alta. Resolução: 25 m.
+## HAND — Height Above Nearest Drainage (Google Earth Engine)
+
+Utilizado para o indicador e2. Modelo de terreno hidrologicamente condicionado que representa a altura vertical de cada pixel em relação ao canal de drenagem mais próximo. Asset: `users/gena/global-hand/hand-100` (Donchyts et al. 2016), derivado do SRTM com resolução ~30 m. Classificação aplicada: 0–2 m, 2–4 m, 4–6 m, > 6 m.
+
+## JRC Global River Flood Hazard Maps v2.1 (Google Earth Engine)
+
+Utilizado para o indicador e2 como máscara de perigo. Asset: `JRC/CEMS_GLOFAS/FloodHazard/v2_1`, mantido pelo Joint Research Centre da Comissão Europeia (CEMS-GLOFAS). Resolução: ~1 km. Banda utilizada: `RP100_depth` — profundidade de inundação em metros para período de retorno de 100 anos.
 
 ## INPE — Focos de queimadas (2016–2025)
 
