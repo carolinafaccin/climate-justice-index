@@ -611,7 +611,7 @@ def _save_national_distribution(df_full: pd.DataFrame, nat_iic_mean: float, out_
 def _build_sankey_json() -> str:
     ip_w = round(25 / 5, 4)   # 5.0
     iv_w = round(25 / 5, 4)   # 5.0
-    ie_w = round(25 / 5, 4)   # 5.0
+    ie_w = round(25 / 6, 4)   # 4.1667
     ig_w = round(25 / 8, 4)   # 3.125
 
     node_labels = [
@@ -623,10 +623,11 @@ def _build_sankey_json() -> str:
         "Indígenas e quilombolas", "Idosos (60 anos ou mais)", "Crianças (9 anos ou menos)",
         # IV (10–14)
         "Baixa renda", "Moradia precária", "Educação", "Acesso à saúde", "Infraestrutura",
-        # IE (15–19)
+        # IE (15–20)
         "Deslizamentos de terra", "Inundações, alagamentos e enxurradas",
         "Elevação do nível do mar", "Calor extremo", "Focos de queimadas",
-        # IG (20–27)
+        "Seca e estiagem",
+        # IG (21–28)
         "Investimento", "Planejamento", "Participação", "Governança",
         "Resposta", "Informação", "Reconhecimento", "Reparação",
     ]
@@ -635,25 +636,25 @@ def _build_sankey_json() -> str:
         + ["#eb8026", "#3855a3", "#32864b", "#9b216c"]   # dims
         + ["#f5c896"] * 5         # IP indicators
         + ["#adb8dc"] * 5         # IV indicators
-        + ["#a2cbb0"] * 5         # IE indicators
+        + ["#a2cbb0"] * 6         # IE indicators (6 agora)
         + ["#d4a3be"] * 8         # IG indicators
     )
 
     # Flow: indicators → dimensions → IIC
-    tgt = [0,0,0,0] + [1]*5 + [2]*5 + [3]*5 + [4]*8
+    tgt = [0,0,0,0] + [1]*5 + [2]*5 + [3]*6 + [4]*8
     src = (
         [1,2,3,4]
         + list(range(5,10)) + list(range(10,15))
-        + list(range(15,20)) + list(range(20,28))
+        + list(range(15,21)) + list(range(21,29))
     )
     val = ([25]*4
-           + [ip_w]*5 + [iv_w]*5 + [ie_w]*5 + [ig_w]*8)
+           + [ip_w]*5 + [iv_w]*5 + [ie_w]*6 + [ig_w]*8)
     lnk_colors = (
         ["rgba(235,128,38,0.4)", "rgba(56,85,163,0.4)",
          "rgba(50,134,75,0.4)", "rgba(155,33,108,0.4)"]
         + ["rgba(235,128,38,0.22)"] * 5
         + ["rgba(56,85,163,0.22)"]  * 5
-        + ["rgba(50,134,75,0.22)"]  * 5
+        + ["rgba(50,134,75,0.22)"]  * 6
         + ["rgba(155,33,108,0.22)"] * 8
     )
 
