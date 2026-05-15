@@ -84,7 +84,7 @@ CLASSIFICATION_METHOD_OVERVIEW = "quintiles"
 # Indicadores individuais (e1, e2, e3, etc.):
 # "quintiles" → 5 classes by municipal size (porte) — different bounds per porte
 # "equal_intervals" → 5 equal-width classes based on national min/max — comparable across all Brazil
-CLASSIFICATION_METHOD_INDICATORS = "equals_intervals"
+CLASSIFICATION_METHOD_INDICATORS = "equal_intervals"
 
 WEBP_QUALITY = 82  # 0-100; 82 gives ~68% size reduction vs PNG with negligible quality loss
 
@@ -305,16 +305,16 @@ def _set_extent(ax, boundary: gpd.GeoDataFrame, buf: float = 0.05) -> None:
 
 
 def _add_scale_bar(ax) -> None:
-    """Minimal scale bar at bottom-right corner."""
+    """Scale bar at bottom-right corner."""
     x0, x1 = ax.get_xlim()
     y0, y1 = ax.get_ylim()
     km_per_deg = np.cos(np.radians((y0 + y1) / 2)) * 111.32
     nice   = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500]
     bar_km = min(nice, key=lambda d: abs(d - (x1 - x0) * km_per_deg * 0.15))
     bar_deg = bar_km / km_per_deg
-    # Position at bottom-right (10% margin from edges)
-    bx0 = x1 - (x1 - x0) * 0.18
-    by0 = y0 + (y1 - y0) * 0.05
+    # Position: bottom-right corner (maximized to edge)
+    bx0 = x1 - (x1 - x0) * 0.16
+    by0 = y0 + (y1 - y0) * 0.04
     # Simple black line
     ax.plot([bx0, bx0 + bar_deg], [by0, by0], color="black", lw=1.5, zorder=20, transform=ax.transData)
     # Tick marks at ends
@@ -325,16 +325,6 @@ def _add_scale_bar(ax) -> None:
     ty = by0 - tick_h * 2.5
     ax.text(bx0,           ty, "0",              ha="center", va="top", fontsize=5.5, zorder=22, transform=ax.transData)
     ax.text(bx0 + bar_deg, ty, f"{bar_km:.4g} km", ha="center", va="top", fontsize=5.5, zorder=22, transform=ax.transData)
-
-
-def _add_north_arrow(ax) -> None:
-    """Minimal north arrow at bottom-right corner, above scale bar."""
-    # Position at bottom-right, above the scale bar
-    ax.annotate("", xy=(0.88, 0.14), xytext=(0.88, 0.06),
-        xycoords="axes fraction", textcoords="axes fraction",
-        arrowprops=dict(arrowstyle="-|>", color="black", lw=1.2, mutation_scale=12), zorder=30)
-    ax.text(0.88, 0.155, "N", ha="center", va="bottom", fontsize=7, fontweight="bold",
-            transform=ax.transAxes, zorder=31)
 
 
 def _legend_handles(class_colors: list, labels: list) -> list:
@@ -360,7 +350,6 @@ def _draw_hexagons(ax, gdf: gpd.GeoDataFrame, col: str,
         boundary.boundary.plot(ax=ax, color="#1a1a1a", linewidth=1.2, zorder=10)
         _set_extent(ax, boundary)
     _add_scale_bar(ax)
-    _add_north_arrow(ax)
     ax.axis("off")
 
 
@@ -451,6 +440,11 @@ def _save_indicator_figure(
 ) -> None:
     labels = [f"{class_bounds[i]:.3f}–{class_bounds[i+1]:.3f}" for i in range(5)]
     porte_label = porte if porte else "não identificado"
+    # Dynamic classification label based on method
+    if CLASSIFICATION_METHOD_INDICATORS == "quintiles":
+        legend_title = f"Classificação por quintis · porte municipal: {porte_label}"
+    else:  # equal_intervals
+        legend_title = "Classificação por intervalos iguais"
 
     fig = plt.figure(figsize=IND_FIG_SIZE)
     # Map spans full height on the left; histogram sits in the lower-right only,
@@ -471,7 +465,7 @@ def _save_indicator_figure(
     handles = _legend_handles(class_colors, labels)
     ax_map.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, -0.02),
                   ncol=3, fontsize=6,
-                  title=f"Classificação por quintis · porte municipal: {porte_label}",
+                  title=legend_title,
                   title_fontsize=6,
                   framealpha=1.0, edgecolor="#ccc",
                   handlelength=1.0, handleheight=0.85, borderpad=0.4, labelspacing=0.2)
