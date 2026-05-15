@@ -75,6 +75,17 @@ DIM_ORDER    = ["ip", "iv", "ie", "ig"]
 ALL_IND_KEYS = diag_utils.ALL_INDICATOR_KEYS
 ABBR_TO_DIM  = {meta["abbr"].lower(): dim for dim, meta in cfg.DIMENSION_META.items()}
 
+# ==============================================================================
+# CLASSIFICATION METHOD FOR MAP LEGENDS
+# ==============================================================================
+# Overview (visão geral de cada município): sempre quintiles por porte
+CLASSIFICATION_METHOD_OVERVIEW = "quintiles"
+
+# Indicadores individuais (e1, e2, e3, etc.):
+# "quintiles" → 5 classes by municipal size (porte) — different bounds per porte
+# "equal_intervals" → 5 equal-width classes based on national min/max — comparable across all Brazil
+CLASSIFICATION_METHOD_INDICATORS = "equals_intervals"
+
 WEBP_QUALITY = 82  # 0-100; 82 gives ~68% size reduction vs PNG with negligible quality loss
 
 def _save_webp(fig, path: Path, dpi: int = DPI) -> None:
@@ -182,13 +193,44 @@ def compute_porte_quintiles(
     return result
 
 
+def _equal_intervals_bounds(
+    data_min: float,
+    data_max: float,
+    n_classes: int = 5,
+) -> list[float]:
+    """Create n equal-width intervals from data_min to data_max, capped at [0, 1]."""
+    data_min = max(0.0, float(data_min))
+    data_max = min(1.0, float(data_max))
+    if data_max <= data_min:
+        data_max = data_min + 0.001
+    width = (data_max - data_min) / n_classes
+    bounds = [data_min + width * i for i in range(n_classes + 1)]
+    bounds[-1] = min(1.0, bounds[-1])  # ensure last bound doesn't exceed 1.0
+    return bounds
+
+
 def get_bounds_labels(
     porte: str | None,
     col: str,
     quintile_data: dict,
+    method: str = "quintiles",
+    equal_bounds: list[float] | None = None,
 ) -> tuple[list[float], list[str]]:
-    """Return (class_bounds, class_labels) from porte quintiles or fixed fallback."""
+    """
+    Return (class_bounds, class_labels).
+
+    method:
+      - "quintiles": use porte-based quintiles (different per porte)
+      - "equal_intervals": use equal-width intervals (same for all Brazil)
+
+    equal_bounds: pre-computed bounds for equal_intervals method (e.g., [0.0, 0.2, 0.4, ...])
+    """
     fallback = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+
+    if method == "equal_intervals" and equal_bounds:
+        return equal_bounds, [f"{equal_bounds[i]:.3f}–{equal_bounds[i+1]:.3f}" for i in range(5)]
+
+    # Default: quintiles
     if porte and porte in quintile_data and col in quintile_data[porte]:
         q = quintile_data[porte][col]
         return q, [f"{q[i]:.3f}–{q[i+1]:.3f}" for i in range(5)]
@@ -263,28 +305,35 @@ def _set_extent(ax, boundary: gpd.GeoDataFrame, buf: float = 0.05) -> None:
 
 
 def _add_scale_bar(ax) -> None:
+    """Minimal scale bar at bottom-right corner."""
     x0, x1 = ax.get_xlim()
     y0, y1 = ax.get_ylim()
     km_per_deg = np.cos(np.radians((y0 + y1) / 2)) * 111.32
     nice   = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500]
-    bar_km = min(nice, key=lambda d: abs(d - (x1 - x0) * km_per_deg * 0.20))
+    bar_km = min(nice, key=lambda d: abs(d - (x1 - x0) * km_per_deg * 0.15))
     bar_deg = bar_km / km_per_deg
-    bx0 = x0 + (x1 - x0) * 0.05
+    # Position at bottom-right (10% margin from edges)
+    bx0 = x1 - (x1 - x0) * 0.18
     by0 = y0 + (y1 - y0) * 0.05
-    bar_h = (y1 - y0) * 0.012
-    ax.add_patch(Rectangle((bx0, by0), bar_deg / 2, bar_h, fc="black", ec="black", lw=0.5, zorder=20, transform=ax.transData))
-    ax.add_patch(Rectangle((bx0 + bar_deg / 2, by0), bar_deg / 2, bar_h, fc="white", ec="black", lw=0.5, zorder=20, transform=ax.transData))
-    ax.add_patch(Rectangle((bx0, by0), bar_deg, bar_h, fc="none", ec="black", lw=0.9, zorder=21, transform=ax.transData))
-    ty = by0 + bar_h * 1.4
-    ax.text(bx0,           ty, "0",              ha="center", va="bottom", fontsize=6, zorder=22, transform=ax.transData)
-    ax.text(bx0 + bar_deg, ty, f"{bar_km:.4g} km", ha="center", va="bottom", fontsize=6, zorder=22, transform=ax.transData)
+    # Simple black line
+    ax.plot([bx0, bx0 + bar_deg], [by0, by0], color="black", lw=1.5, zorder=20, transform=ax.transData)
+    # Tick marks at ends
+    tick_h = (y1 - y0) * 0.008
+    ax.plot([bx0, bx0], [by0 - tick_h, by0 + tick_h], color="black", lw=1, zorder=20, transform=ax.transData)
+    ax.plot([bx0 + bar_deg, bx0 + bar_deg], [by0 - tick_h, by0 + tick_h], color="black", lw=1, zorder=20, transform=ax.transData)
+    # Labels below
+    ty = by0 - tick_h * 2.5
+    ax.text(bx0,           ty, "0",              ha="center", va="top", fontsize=5.5, zorder=22, transform=ax.transData)
+    ax.text(bx0 + bar_deg, ty, f"{bar_km:.4g} km", ha="center", va="top", fontsize=5.5, zorder=22, transform=ax.transData)
 
 
 def _add_north_arrow(ax) -> None:
-    ax.annotate("", xy=(0.93, 0.94), xytext=(0.93, 0.85),
+    """Minimal north arrow at bottom-right corner, above scale bar."""
+    # Position at bottom-right, above the scale bar
+    ax.annotate("", xy=(0.88, 0.14), xytext=(0.88, 0.06),
         xycoords="axes fraction", textcoords="axes fraction",
-        arrowprops=dict(arrowstyle="-|>", color="black", lw=1.5, mutation_scale=14), zorder=30)
-    ax.text(0.93, 0.96, "N", ha="center", va="bottom", fontsize=9, fontweight="bold",
+        arrowprops=dict(arrowstyle="-|>", color="black", lw=1.2, mutation_scale=12), zorder=30)
+    ax.text(0.88, 0.155, "N", ha="center", va="bottom", fontsize=7, fontweight="bold",
             transform=ax.transAxes, zorder=31)
 
 
@@ -356,9 +405,9 @@ def _save_overview_figure(
     angles = np.linspace(0, 2 * np.pi, N, endpoint=False).tolist() + [0]
     cv     = city_dim_means + city_dim_means[:1]
     nv     = national_dim_means + national_dim_means[:1]
-    ax_rad.plot(angles, cv, "o-", color=WRI_YELLOW, lw=2, label=city_name, zorder=3)
+    ax_rad.plot(angles, cv, "o-", color=WRI_YELLOW, lw=2, label=f"Média - {city_name}", zorder=3)
     ax_rad.fill(angles, cv, alpha=0.25, color=WRI_YELLOW, zorder=2)
-    ax_rad.plot(angles, nv, "o--", color="#888", lw=1.5, label="Brasil", zorder=3)
+    ax_rad.plot(angles, nv, "o--", color="#888", lw=1.5, label="Média - Brasil", zorder=3)
     ax_rad.fill(angles, nv, alpha=0.12, color="#888", zorder=1)
     ax_rad.set_xticks(angles[:-1])
     ax_rad.set_xticklabels(dim_labels, size=8)
@@ -370,8 +419,8 @@ def _save_overview_figure(
 
     # Bottom right: IIC histogram
     ax_hist.hist(iic_vals, bins=25, range=(0, 1), color="#fde68a", edgecolor="none", alpha=0.85)
-    ax_hist.axvline(iic_mean,     color=WRI_YELLOW, lw=2,   label=f"Município: {iic_mean:.3f}")
-    ax_hist.axvline(nat_iic_mean, color="#444444",  lw=1.5, ls="--", label=f"Brasil: {nat_iic_mean:.3f}")
+    ax_hist.axvline(iic_mean,     color=WRI_YELLOW, lw=2,   label=f"Média - Município: {iic_mean:.3f}")
+    ax_hist.axvline(nat_iic_mean, color="#444444",  lw=1.5, ls="--", label=f"Média - Brasil: {nat_iic_mean:.3f}")
     ax_hist.set_xlabel("IIC Final", fontsize=8)
     ax_hist.set_ylabel("Hexágonos", fontsize=8)
     ax_hist.set_xlim(0, 1)
@@ -433,8 +482,8 @@ def _save_indicator_figure(
     bar_w = (edges[1] - edges[0]) * 0.78
     centers = (edges[:-1] + edges[1:]) / 2
     ax_hist.bar(centers, counts, width=bar_w, color=dim_color, alpha=0.55, edgecolor="none")
-    ax_hist.axvline(city_mean, color=WRI_YELLOW, lw=1.8, label=f"Município: {city_mean:.3f}")
-    ax_hist.axvline(nat_mean,  color="#666",     lw=1.2, ls="--", label=f"Brasil: {nat_mean:.3f}")
+    ax_hist.axvline(city_mean, color=WRI_YELLOW, lw=1.8, label=f"Média - Município: {city_mean:.3f}")
+    ax_hist.axvline(nat_mean,  color="#666",     lw=1.2, ls="--", label=f"Média - Brasil: {nat_mean:.3f}")
     ax_hist.set_xlabel(display_name, fontsize=7, color="#555")
     ax_hist.set_ylabel("Hexágonos",  fontsize=7, color="#555")
     ax_hist.set_xlim(0, 1)
@@ -464,6 +513,7 @@ def generate_city(
     porte_map: dict[str, str],
     quintile_data: dict,
     coastal_muns: set[str] | None = None,
+    equal_intervals: dict[str, list[float]] | None = None,
 ) -> dict | None:
     nm_mun = city_row["nm_mun"]
     nm_uf  = city_row["nm_uf"]
@@ -491,7 +541,11 @@ def generate_city(
     nat_pct  = float((nat["_iic_all"] < iic_mean).mean() * 100)
 
     # --- Overview figure (map + radar + histogram combined) ---
-    bounds_iic, _      = get_bounds_labels(porte, "iic_final", quintile_data)
+    bounds_iic, _      = get_bounds_labels(
+        porte, "iic_final", quintile_data,
+        method=CLASSIFICATION_METHOD_OVERVIEW,
+        equal_bounds=equal_intervals.get("iic_final") if equal_intervals else None,
+    )
     dim_labels         = [cfg.DIMENSION_META[ABBR_TO_DIM[a]]["abbr"] for a in DIM_ORDER]
     city_dim_means     = [float(df[a].mean()) if a in df.columns else 0.0 for a in DIM_ORDER]
     national_dim_means = [nat.get(a, {}).get("mean", 0.0) for a in DIM_ORDER]
@@ -528,7 +582,11 @@ def generate_city(
 
             ind_mean = float(np.nanmean(ind_vals))
             nat_ind  = nat.get(ind_key, {}).get("mean", 0.0)
-            bounds_ind, _ = get_bounds_labels(porte, ind_key, quintile_data)
+            bounds_ind, _ = get_bounds_labels(
+                porte, ind_key, quintile_data,
+                method=CLASSIFICATION_METHOD_INDICATORS,
+                equal_bounds=equal_intervals.get(ind_key) if equal_intervals else None,
+            )
 
             _save_indicator_figure(
                 gdf, ind_key,
@@ -1104,6 +1162,17 @@ def main() -> None:
     quintile_data = compute_porte_quintiles(df_full, porte_map, ind_cols)
     print(f"  {len(quintile_data)} porte groups computed.")
 
+    # Compute equal-width intervals for indicators if using that classification method
+    equal_intervals = {}
+    if CLASSIFICATION_METHOD_INDICATORS == "equal_intervals":
+        print("\nComputing equal-interval bounds (national) for indicators...")
+        for col in ind_cols:
+            data_min = float(df_full[col].min()) if col in df_full.columns else 0.0
+            data_max = float(df_full[col].max()) if col in df_full.columns else 1.0
+            bounds = _equal_intervals_bounds(data_min, data_max, n_classes=5)
+            equal_intervals[col] = bounds
+            print(f"  {col}: {bounds[0]:.3f}–{bounds[-1]:.3f}")
+
     print("\nGenerating national distribution figure...")
     nat_dist_path = IMGS_DIR / "national_distribution.webp"
     _save_national_distribution(df_full, nat["iic_final"]["mean"], nat_dist_path)
@@ -1113,7 +1182,7 @@ def main() -> None:
 
     cities_data = []
     for city_row in CITIES:
-        data = generate_city(city_row, df_full, nat, muns, porte_map, quintile_data, coastal_muns)
+        data = generate_city(city_row, df_full, nat, muns, porte_map, quintile_data, coastal_muns, equal_intervals)
         if data:
             cities_data.append(data)
 
