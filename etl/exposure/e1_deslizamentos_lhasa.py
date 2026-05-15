@@ -1,7 +1,14 @@
 """
-ETL: Copernicus DEM / GEE → Indicator e1 (landslide susceptibility via slope).
+ETL: NASA LHASA / GEE → Indicator e1 (landslide susceptibility).
 
-Input:  cfg.RAW_DIR state-level CSVs with columns h3_id, alta_media
+Fonte: Stanley & Kirschbaum (2017) — Global Landslide Susceptibility Map
+       Modelo multicritério (slope + geology + forest loss + roads + faults).
+
+Métrica principal: lhasa_high_frac (fração da área do hexágono com LHASA >= 4,
+i.e. classes "High" ou "Very High"). Equivalente conceitual ao "alta_media"
+do método de slope, mas calibrado com múltiplos critérios.
+
+Input:  cfg.RAW_DIR state-level CSVs com colunas h3_id, lhasa_mean, lhasa_high_frac
 Output: cfg.FILES_H3["e1"] parquet
 """
 
@@ -22,7 +29,7 @@ from src import utils
 GEE_DIR = cfg.RAW_DIR / cfg.INDICATORS["e1"]["source"]["dir"]
 
 now = datetime.now().strftime("%Y%m%d_%H%M%S")
-DIAGNOSTIC_TXT = cfg.DIAGNOSE_DIR / f"diagnostic_h3_e1_deslizamentos_slope_{now}.txt"
+DIAGNOSTIC_TXT = cfg.DIAGNOSE_DIR / f"diagnostic_h3_e1_deslizamentos_lhasa_{now}.txt"
 
 col_e1_norm = cfg.COLUMN_MAP["e1"]
 col_e1_abs  = col_e1_norm.replace("_norm", "_abs")
@@ -33,13 +40,13 @@ col_e1_abs  = col_e1_norm.replace("_norm", "_abs")
 # ==============================================================================
 def main():
     print("=" * 60)
-    print("ETL: GEE Copernicus DEM — E1 (Landslide Susceptibility)")
+    print("ETL: NASA LHASA — E1 (Landslide Susceptibility)")
     print(f"Source: {GEE_DIR}")
     print("=" * 60)
 
     # Load all UF CSVs
     print("\n1/4 - Loading GEE CSVs...")
-    csv_files = sorted(GEE_DIR.glob("h3_susc_desliz_slope_v1_uf_*.csv"))
+    csv_files = sorted(GEE_DIR.glob("h3_susc_desliz_lhasa_v1_uf_*.csv"))
     if not csv_files:
         raise FileNotFoundError(f"No CSV found in: {GEE_DIR}")
     print(f"   Files found: {len(csv_files)}")
@@ -47,11 +54,11 @@ def main():
     parts = []
     for path in csv_files:
         try:
-            df = pd.read_csv(path, usecols=["h3_id", "alta_media"])
+            df = pd.read_csv(path, usecols=["h3_id", "lhasa_mean", "lhasa_high_frac"])
         except ValueError:
             df = pd.read_csv(path)
             df.columns = df.columns.str.lower()
-            df = df[["h3_id", "alta_media"]]
+            df = df[["h3_id", "lhasa_mean", "lhasa_high_frac"]]
         parts.append(df)
         print(f"   ✓ {path.name}  ({len(df):,} hexagons)")
 
@@ -68,19 +75,25 @@ def main():
     # ==============================================================================
     print("\n2/4 - Calculating indicator...")
 
-    df_all["alta_media"] = pd.to_numeric(df_all["alta_media"], errors="coerce").fillna(0)
+    df_all["lhasa_mean"]      = pd.to_numeric(df_all["lhasa_mean"],      errors="coerce")
+    df_all["lhasa_high_frac"] = pd.to_numeric(df_all["lhasa_high_frac"], errors="coerce")
 
-    # e1_abs = fraction of hex area with high or medium slope susceptibility (0–1)
-    # No weighting by households — the metric is directly the spatial extent of slope risk
-    df_all[col_e1_abs] = df_all["alta_media"]
+    # Fill NaN with 0 (hexágonos sem dado LHASA = sem informação = assumir sem risco)
+    df_all["lhasa_high_frac"] = df_all["lhasa_high_frac"].fillna(0)
 
-    # winsorize=False: landslide susceptibility is geographically concentrated
-    # (mostly mountainous/hilly areas). P99 would collapse to ~0 and normalize poorly.
+    # e1_abs = fração da área do hexágono em classe High/Very High do LHASA (0–1)
+    # Não há ponderação por domicílios — a métrica é diretamente a extensão espacial
+    # da suscetibilidade alta no hexágono.
+    df_all[col_e1_abs] = df_all["lhasa_high_frac"]
+
+    # winsorize=False: suscetibilidade é geograficamente concentrada
+    # (Amazônia + áreas tropicais úmidas com desmatamento). P99 colapsaria a cauda.
     df_all[col_e1_norm] = utils.normalize_minmax(df_all[col_e1_abs], winsorize=False)
 
-    n_risk = (df_all["alta_media"] > 0).sum()
-    print(f"   Hexagons with risk > 0: {n_risk:,}")
+    n_risk = (df_all["lhasa_high_frac"] > 0).sum()
+    print(f"   Hexagons with LHASA high/very-high (> 0): {n_risk:,}")
     print(f"   Mean fraction at risk: {df_all[col_e1_abs].mean():.4f}")
+    print(f"   Mean LHASA value: {df_all['lhasa_mean'].mean():.2f}")
 
     # ==============================================================================
     # 4. MERGE WITH H3 BASE AND SAVE
@@ -108,14 +121,22 @@ def main():
 def _write_diagnostic(df_all, df_final, csv_files):
     with open(DIAGNOSTIC_TXT, "w", encoding="utf-8") as f:
         f.write("=" * 60 + "\n")
-        f.write("GEE Copernicus DEM — E1 Landslide Susceptibility ETL Diagnostic\n")
+        f.write("NASA LHASA — E1 Landslide Susceptibility ETL Diagnostic\n")
         f.write(f"Run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write("=" * 60 + "\n\n")
         f.write(f"GEE directory : {GEE_DIR}\n")
         f.write(f"Files read    : {len(csv_files)}\n\n")
 
-        f.write("--- alta_media (fraction of hex area with high/medium slope) ---\n")
-        s_raw = df_all["alta_media"].dropna()
+        f.write("--- lhasa_mean (raw LHASA value 1–5) ---\n")
+        s_mean = df_all["lhasa_mean"].dropna()
+        f.write(f"  mean   = {s_mean.mean():.4f}\n")
+        f.write(f"  median = {s_mean.median():.4f}\n")
+        f.write(f"  min    = {s_mean.min():.4f}\n")
+        f.write(f"  max    = {s_mean.max():.4f}\n")
+        f.write(f"  count  = {len(s_mean):,}\n\n")
+
+        f.write("--- lhasa_high_frac (fraction of hex area with LHASA >= 4) ---\n")
+        s_raw = df_all["lhasa_high_frac"].dropna()
         f.write(f"  mean   = {s_raw.mean():.6f}\n")
         f.write(f"  median = {s_raw.median():.6f}\n")
         f.write(f"  min    = {s_raw.min():.6f}\n")
