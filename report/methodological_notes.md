@@ -48,15 +48,11 @@ Percentual de domicílios sem coleta de esgoto, sem abastecimento de água e/ou 
 
 # Dimensão de Exposição (e1–e5)
 
-### E1 — Deslizamentos de terra *(fonte: NASA LHASA / Stanley & Kirschbaum 2017, via Google Earth Engine)*:
-Fração da área de cada hexágono em zona de Alta ou Muito Alta suscetibilidade a deslizamentos de terra, segundo o NASA Global Landslide Susceptibility Map (LHASA).
-
-O LHASA é um modelo multicritério (fuzzy overlay) que combina cinco variáveis: declividade (slope), litologia, perda de cobertura florestal, densidade de estradas e distância a falhas geológicas. O raster classifica cada pixel (~1 km de resolução) em cinco níveis: 1 (Very Low), 2 (Low), 3 (Moderate), 4 (High) e 5 (Very High). Optou-se por esse modelo em substituição ao método baseado em slope puro porque comparações em escala nacional revelaram correlação negativa entre declividade isolada e ocorrência efetiva de deslizamentos: encostas muito íngremes no Brasil correspondem com frequência a afloramentos rochosos consolidados (baixo risco), enquanto áreas de alto risco real (Amazônia desmatada, encostas tropicais úmidas) têm declividades moderadas.
-
-No GEE, o raster foi processado com `Reducer.mean()` aplicado a um buffer de 174 m (circunraio do H3 res9), gerando duas métricas por hexágono: `lhasa_mean` (valor médio 1–5) e `lhasa_high_frac` (fração da área com LHASA ≥ 4). O indicador E1 utiliza apenas `lhasa_high_frac`. Normalização min-max sem winsorização — a suscetibilidade é geograficamente concentrada e a winsorização nos percentis 1%–99% colapsaria a cauda para zero na maior parte do território.
+### E1 — Deslizamentos de terra *(fonte: MapBiomas, 2025 - Coleção Risco Climático)*:
+Percentual de domicílios em zonas de Média, Alta ou Muito Alta suscetibilidade a deslizamentos de terra.
 
 ### E2 — Inundações *(fonte: HAND global + JRC Global River Flood Hazard v2.1, via Google Earth Engine)*:
-Score médio de suscetibilidade a inundações por hexágono, combinando o modelo de terreno HAND (Height Above Nearest Drainage) com a máscara de perigo do JRC Global River Flood Hazard Maps.
+Score médio de suscetibilidade a inundações por hexágonos habitados, combinando o modelo de terreno HAND (Height Above Nearest Drainage, resolução ~30 m, derivado do SRTM) com a máscara de perigo do JRC Global River Flood Hazard Maps (resolução ~1 km).
 
 A metodologia é adaptada da Coleção 1 do MapBiomas Risco Climático (2024), removida a máscara de áreas urbanas que limitava o produto original a perímetros do Open Buildings — assim, o indicador alcança cobertura nacional independente de uso da terra. No GEE, cada pixel recebe um score classificado pelo HAND:
 

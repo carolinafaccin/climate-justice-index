@@ -73,6 +73,12 @@
   }
 </script>
 
+<!-- ================================================================ MOBILE MENU -->
+<button id="menu-toggle" aria-label="Abrir menu" onclick="toggleSidebar()">
+  <span></span><span></span><span></span>
+</button>
+<div id="sidebar-backdrop" onclick="toggleSidebar()"></div>
+
 <!-- ================================================================ SIDEBAR -->
 <nav id="sidebar">
   <div class="sidebar-brand">
@@ -256,7 +262,7 @@
       <div class="cover-tag">WRI Brasil</div>
       <h1>Índice de Injustiça Climática</h1>
       <p class="cover-subtitle">Relatório Municipal</p>
-      <p class="cover-meta">Gerado em 15/05/2026</p>
+      <p class="cover-meta">Gerado em 18/05/2026</p>
       <button class="btn-pdf" onclick="window.print()">⬇ Salvar como PDF</button>
       <div class="cover-cities" style="margin-top:2rem;">
         
@@ -412,11 +418,11 @@
           
           <tr>
             <td class="ct-city"><a href="#porto_alegre_sul" style="color:inherit;text-decoration:none;">Porto Alegre</a></td>
-            <td class="ct-iic">0.268</td>
-            <td class="ct-num">11.7%</td>
+            <td class="ct-iic">0.251</td>
+            <td class="ct-num">11.5%</td>
             <td class="ct-dim" style="color:#c96a10;">0.189</td>
             <td class="ct-dim" style="color:#3855a3;">0.144</td>
-            <td class="ct-dim" style="color:#32864b;">0.154</td>
+            <td class="ct-dim" style="color:#32864b;">0.086</td>
             <td class="ct-dim" style="color:#9b216c;">0.583</td>
             <td class="ct-num">3,224</td>
           </tr>
@@ -424,11 +430,11 @@
           
           <tr>
             <td class="ct-city"><a href="#sao_paulo_paulo" style="color:inherit;text-decoration:none;">São Paulo</a></td>
-            <td class="ct-iic">0.201</td>
-            <td class="ct-num">3.1%</td>
+            <td class="ct-iic">0.160</td>
+            <td class="ct-num">1.6%</td>
             <td class="ct-dim" style="color:#c96a10;">0.241</td>
             <td class="ct-dim" style="color:#3855a3;">0.118</td>
-            <td class="ct-dim" style="color:#32864b;">0.264</td>
+            <td class="ct-dim" style="color:#32864b;">0.100</td>
             <td class="ct-dim" style="color:#9b216c;">0.181</td>
             <td class="ct-num">10,316</td>
           </tr>
@@ -439,11 +445,11 @@
           
           <tr>
             <td class="ct-city"><a href="#maranguape_ceara" style="color:inherit;text-decoration:none;">Maranguape</a></td>
-            <td class="ct-iic">0.346</td>
-            <td class="ct-num">32.8%</td>
+            <td class="ct-iic">0.355</td>
+            <td class="ct-num">40.3%</td>
             <td class="ct-dim" style="color:#c96a10;">0.469</td>
             <td class="ct-dim" style="color:#3855a3;">0.524</td>
-            <td class="ct-dim" style="color:#32864b;">0.147</td>
+            <td class="ct-dim" style="color:#32864b;">0.184</td>
             <td class="ct-dim" style="color:#9b216c;">0.244</td>
             <td class="ct-num">1,271</td>
           </tr>
@@ -451,11 +457,11 @@
           
           <tr>
             <td class="ct-city"><a href="#angra_dos_reis_janeiro" style="color:inherit;text-decoration:none;">Angra dos Reis</a></td>
-            <td class="ct-iic">0.226</td>
-            <td class="ct-num">5.2%</td>
+            <td class="ct-iic">0.227</td>
+            <td class="ct-num">7.2%</td>
             <td class="ct-dim" style="color:#c96a10;">0.275</td>
             <td class="ct-dim" style="color:#3855a3;">0.296</td>
-            <td class="ct-dim" style="color:#32864b;">0.175</td>
+            <td class="ct-dim" style="color:#32864b;">0.179</td>
             <td class="ct-dim" style="color:#9b216c;">0.155</td>
             <td class="ct-num">1,141</td>
           </tr>
@@ -463,11 +469,11 @@
           
           <tr>
             <td class="ct-city"><a href="#gaspar_catarina" style="color:inherit;text-decoration:none;">Gaspar</a></td>
-            <td class="ct-iic">0.212</td>
-            <td class="ct-num">3.8%</td>
+            <td class="ct-iic">0.194</td>
+            <td class="ct-num">3.7%</td>
             <td class="ct-dim" style="color:#c96a10;">0.143</td>
             <td class="ct-dim" style="color:#3855a3;">0.236</td>
-            <td class="ct-dim" style="color:#32864b;">0.144</td>
+            <td class="ct-dim" style="color:#32864b;">0.073</td>
             <td class="ct-dim" style="color:#9b216c;">0.323</td>
             <td class="ct-num">1,398</td>
           </tr>
@@ -475,11 +481,11 @@
           
           <tr>
             <td class="ct-city"><a href="#palmas_tocantins" style="color:inherit;text-decoration:none;">Palmas</a></td>
-            <td class="ct-iic">0.312</td>
-            <td class="ct-num">22.3%</td>
+            <td class="ct-iic">0.297</td>
+            <td class="ct-num">22.6%</td>
             <td class="ct-dim" style="color:#c96a10;">0.336</td>
             <td class="ct-dim" style="color:#3855a3;">0.344</td>
-            <td class="ct-dim" style="color:#32864b;">0.200</td>
+            <td class="ct-dim" style="color:#32864b;">0.142</td>
             <td class="ct-dim" style="color:#9b216c;">0.369</td>
             <td class="ct-num">3,066</td>
           </tr>
@@ -487,11 +493,11 @@
           
           <tr>
             <td class="ct-city"><a href="#dourados_sul" style="color:inherit;text-decoration:none;">Dourados</a></td>
-            <td class="ct-iic">0.263</td>
-            <td class="ct-num">10.7%</td>
+            <td class="ct-iic">0.252</td>
+            <td class="ct-num">11.5%</td>
             <td class="ct-dim" style="color:#c96a10;">0.249</td>
             <td class="ct-dim" style="color:#3855a3;">0.337</td>
-            <td class="ct-dim" style="color:#32864b;">0.148</td>
+            <td class="ct-dim" style="color:#32864b;">0.102</td>
             <td class="ct-dim" style="color:#9b216c;">0.318</td>
             <td class="ct-num">3,181</td>
           </tr>
@@ -502,11 +508,11 @@
           
           <tr>
             <td class="ct-city"><a href="#caceres_grosso" style="color:inherit;text-decoration:none;">Cáceres</a></td>
-            <td class="ct-iic">0.389</td>
-            <td class="ct-num">47.0%</td>
+            <td class="ct-iic">0.364</td>
+            <td class="ct-num">42.8%</td>
             <td class="ct-dim" style="color:#c96a10;">0.339</td>
             <td class="ct-dim" style="color:#3855a3;">0.454</td>
-            <td class="ct-dim" style="color:#32864b;">0.306</td>
+            <td class="ct-dim" style="color:#32864b;">0.203</td>
             <td class="ct-dim" style="color:#9b216c;">0.458</td>
             <td class="ct-num">4,415</td>
           </tr>
@@ -514,11 +520,11 @@
           
           <tr>
             <td class="ct-city"><a href="#mariana_gerais" style="color:inherit;text-decoration:none;">Mariana</a></td>
-            <td class="ct-iic">0.362</td>
-            <td class="ct-num">37.9%</td>
+            <td class="ct-iic">0.353</td>
+            <td class="ct-num">39.5%</td>
             <td class="ct-dim" style="color:#c96a10;">0.419</td>
             <td class="ct-dim" style="color:#3855a3;">0.439</td>
-            <td class="ct-dim" style="color:#32864b;">0.236</td>
+            <td class="ct-dim" style="color:#32864b;">0.201</td>
             <td class="ct-dim" style="color:#9b216c;">0.354</td>
             <td class="ct-num">1,259</td>
           </tr>
@@ -527,10 +533,10 @@
           <tr>
             <td class="ct-city"><a href="#olinda_pernambuco" style="color:inherit;text-decoration:none;">Olinda</a></td>
             <td class="ct-iic">0.241</td>
-            <td class="ct-num">7.0%</td>
+            <td class="ct-num">9.6%</td>
             <td class="ct-dim" style="color:#c96a10;">0.398</td>
             <td class="ct-dim" style="color:#3855a3;">0.175</td>
-            <td class="ct-dim" style="color:#32864b;">0.046</td>
+            <td class="ct-dim" style="color:#32864b;">0.049</td>
             <td class="ct-dim" style="color:#9b216c;">0.347</td>
             <td class="ct-num">327</td>
           </tr>
@@ -538,11 +544,11 @@
           
           <tr>
             <td class="ct-city"><a href="#parauapebas_para" style="color:inherit;text-decoration:none;">Parauapebas</a></td>
-            <td class="ct-iic">0.371</td>
-            <td class="ct-num">41.1%</td>
+            <td class="ct-iic">0.369</td>
+            <td class="ct-num">44.4%</td>
             <td class="ct-dim" style="color:#c96a10;">0.403</td>
             <td class="ct-dim" style="color:#3855a3;">0.457</td>
-            <td class="ct-dim" style="color:#32864b;">0.244</td>
+            <td class="ct-dim" style="color:#32864b;">0.234</td>
             <td class="ct-dim" style="color:#9b216c;">0.382</td>
             <td class="ct-num">2,437</td>
           </tr>
@@ -550,11 +556,11 @@
           
           <tr>
             <td class="ct-city"><a href="#rio_branco_acre" style="color:inherit;text-decoration:none;">Rio Branco</a></td>
-            <td class="ct-iic">0.411</td>
-            <td class="ct-num">54.2%</td>
+            <td class="ct-iic">0.413</td>
+            <td class="ct-num">57.7%</td>
             <td class="ct-dim" style="color:#c96a10;">0.442</td>
             <td class="ct-dim" style="color:#3855a3;">0.543</td>
-            <td class="ct-dim" style="color:#32864b;">0.252</td>
+            <td class="ct-dim" style="color:#32864b;">0.262</td>
             <td class="ct-dim" style="color:#9b216c;">0.407</td>
             <td class="ct-num">5,903</td>
           </tr>
@@ -574,15 +580,15 @@
       <h1>Porto Alegre</h1>
       <div class="city-quick-stats">
         <div class="quick-stat">
-          <span class="stat-value">0.268</span>
+          <span class="stat-value">0.251</span>
           <span class="stat-label">IIC Médio</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">11.7%</span>
+          <span class="stat-value">11.5%</span>
           <span class="stat-label">Percentil Nacional</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">0.603</span>
+          <span class="stat-value">0.602</span>
           <span class="stat-label">IIC Máximo</span>
         </div>
         <div class="quick-stat">
@@ -610,7 +616,7 @@
 
   <!-- ---- PER DIMENSION ---- -->
   
-  <section class="page" id="porto_alegre_sul-ip">
+  <section class="page dim-section" id="porto_alegre_sul-ip">
     <h2 class="section-title" style="border-color: #eb8026;">
       IP — Grupos Prioritários
       
@@ -685,7 +691,7 @@
     
   </section>
   
-  <section class="page" id="porto_alegre_sul-iv">
+  <section class="page dim-section" id="porto_alegre_sul-iv">
     <h2 class="section-title" style="border-color: #3855a3;">
       IV — Vulnerabilidade Socioeconômica
       
@@ -760,15 +766,15 @@
     
   </section>
   
-  <section class="page" id="porto_alegre_sul-ie">
+  <section class="page dim-section" id="porto_alegre_sul-ie">
     <h2 class="section-title" style="border-color: #32864b;">
       IE — Exposição a Riscos Climáticos
       
     </h2>
 
     <div class="dim-score-bar">
-      <span>Média no município: <strong>0.154</strong></span>
-      <span>Média Brasil: <strong>0.161</strong></span>
+      <span>Média no município: <strong>0.086</strong></span>
+      <span>Média Brasil: <strong>0.123</strong></span>
       
     </div>
 
@@ -823,7 +829,7 @@
     
   </section>
   
-  <section class="page" id="porto_alegre_sul-ig">
+  <section class="page dim-section" id="porto_alegre_sul-ig">
     <h2 class="section-title" style="border-color: #9b216c;">
       IG — Capacidade de Gestão Municipal
       <span class="invert-note">(invertida no IIC)</span>
@@ -948,15 +954,15 @@
       <h1>São Paulo</h1>
       <div class="city-quick-stats">
         <div class="quick-stat">
-          <span class="stat-value">0.201</span>
+          <span class="stat-value">0.160</span>
           <span class="stat-label">IIC Médio</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">3.1%</span>
+          <span class="stat-value">1.6%</span>
           <span class="stat-label">Percentil Nacional</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">0.484</span>
+          <span class="stat-value">0.447</span>
           <span class="stat-label">IIC Máximo</span>
         </div>
         <div class="quick-stat">
@@ -984,7 +990,7 @@
 
   <!-- ---- PER DIMENSION ---- -->
   
-  <section class="page" id="sao_paulo_paulo-ip">
+  <section class="page dim-section" id="sao_paulo_paulo-ip">
     <h2 class="section-title" style="border-color: #eb8026;">
       IP — Grupos Prioritários
       
@@ -1059,7 +1065,7 @@
     
   </section>
   
-  <section class="page" id="sao_paulo_paulo-iv">
+  <section class="page dim-section" id="sao_paulo_paulo-iv">
     <h2 class="section-title" style="border-color: #3855a3;">
       IV — Vulnerabilidade Socioeconômica
       
@@ -1134,15 +1140,15 @@
     
   </section>
   
-  <section class="page" id="sao_paulo_paulo-ie">
+  <section class="page dim-section" id="sao_paulo_paulo-ie">
     <h2 class="section-title" style="border-color: #32864b;">
       IE — Exposição a Riscos Climáticos
       
     </h2>
 
     <div class="dim-score-bar">
-      <span>Média no município: <strong>0.264</strong></span>
-      <span>Média Brasil: <strong>0.161</strong></span>
+      <span>Média no município: <strong>0.100</strong></span>
+      <span>Média Brasil: <strong>0.123</strong></span>
       
     </div>
 
@@ -1197,7 +1203,7 @@
     
   </section>
   
-  <section class="page" id="sao_paulo_paulo-ig">
+  <section class="page dim-section" id="sao_paulo_paulo-ig">
     <h2 class="section-title" style="border-color: #9b216c;">
       IG — Capacidade de Gestão Municipal
       <span class="invert-note">(invertida no IIC)</span>
@@ -1322,15 +1328,15 @@
       <h1>Maranguape</h1>
       <div class="city-quick-stats">
         <div class="quick-stat">
-          <span class="stat-value">0.346</span>
+          <span class="stat-value">0.355</span>
           <span class="stat-label">IIC Médio</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">32.8%</span>
+          <span class="stat-value">40.3%</span>
           <span class="stat-label">Percentil Nacional</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">0.494</span>
+          <span class="stat-value">0.520</span>
           <span class="stat-label">IIC Máximo</span>
         </div>
         <div class="quick-stat">
@@ -1358,7 +1364,7 @@
 
   <!-- ---- PER DIMENSION ---- -->
   
-  <section class="page" id="maranguape_ceara-ip">
+  <section class="page dim-section" id="maranguape_ceara-ip">
     <h2 class="section-title" style="border-color: #eb8026;">
       IP — Grupos Prioritários
       
@@ -1433,7 +1439,7 @@
     
   </section>
   
-  <section class="page" id="maranguape_ceara-iv">
+  <section class="page dim-section" id="maranguape_ceara-iv">
     <h2 class="section-title" style="border-color: #3855a3;">
       IV — Vulnerabilidade Socioeconômica
       
@@ -1508,15 +1514,15 @@
     
   </section>
   
-  <section class="page" id="maranguape_ceara-ie">
+  <section class="page dim-section" id="maranguape_ceara-ie">
     <h2 class="section-title" style="border-color: #32864b;">
       IE — Exposição a Riscos Climáticos
       
     </h2>
 
     <div class="dim-score-bar">
-      <span>Média no município: <strong>0.147</strong></span>
-      <span>Média Brasil: <strong>0.161</strong></span>
+      <span>Média no município: <strong>0.184</strong></span>
+      <span>Média Brasil: <strong>0.123</strong></span>
       
     </div>
 
@@ -1571,7 +1577,7 @@
     
   </section>
   
-  <section class="page" id="maranguape_ceara-ig">
+  <section class="page dim-section" id="maranguape_ceara-ig">
     <h2 class="section-title" style="border-color: #9b216c;">
       IG — Capacidade de Gestão Municipal
       <span class="invert-note">(invertida no IIC)</span>
@@ -1696,15 +1702,15 @@
       <h1>Angra dos Reis</h1>
       <div class="city-quick-stats">
         <div class="quick-stat">
-          <span class="stat-value">0.226</span>
+          <span class="stat-value">0.227</span>
           <span class="stat-label">IIC Médio</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">5.2%</span>
+          <span class="stat-value">7.2%</span>
           <span class="stat-label">Percentil Nacional</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">0.434</span>
+          <span class="stat-value">0.449</span>
           <span class="stat-label">IIC Máximo</span>
         </div>
         <div class="quick-stat">
@@ -1732,7 +1738,7 @@
 
   <!-- ---- PER DIMENSION ---- -->
   
-  <section class="page" id="angra_dos_reis_janeiro-ip">
+  <section class="page dim-section" id="angra_dos_reis_janeiro-ip">
     <h2 class="section-title" style="border-color: #eb8026;">
       IP — Grupos Prioritários
       
@@ -1807,7 +1813,7 @@
     
   </section>
   
-  <section class="page" id="angra_dos_reis_janeiro-iv">
+  <section class="page dim-section" id="angra_dos_reis_janeiro-iv">
     <h2 class="section-title" style="border-color: #3855a3;">
       IV — Vulnerabilidade Socioeconômica
       
@@ -1882,15 +1888,15 @@
     
   </section>
   
-  <section class="page" id="angra_dos_reis_janeiro-ie">
+  <section class="page dim-section" id="angra_dos_reis_janeiro-ie">
     <h2 class="section-title" style="border-color: #32864b;">
       IE — Exposição a Riscos Climáticos
       
     </h2>
 
     <div class="dim-score-bar">
-      <span>Média no município: <strong>0.175</strong></span>
-      <span>Média Brasil: <strong>0.161</strong></span>
+      <span>Média no município: <strong>0.179</strong></span>
+      <span>Média Brasil: <strong>0.123</strong></span>
       
     </div>
 
@@ -1957,7 +1963,7 @@
     
   </section>
   
-  <section class="page" id="angra_dos_reis_janeiro-ig">
+  <section class="page dim-section" id="angra_dos_reis_janeiro-ig">
     <h2 class="section-title" style="border-color: #9b216c;">
       IG — Capacidade de Gestão Municipal
       <span class="invert-note">(invertida no IIC)</span>
@@ -2082,15 +2088,15 @@
       <h1>Gaspar</h1>
       <div class="city-quick-stats">
         <div class="quick-stat">
-          <span class="stat-value">0.212</span>
+          <span class="stat-value">0.194</span>
           <span class="stat-label">IIC Médio</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">3.8%</span>
+          <span class="stat-value">3.7%</span>
           <span class="stat-label">Percentil Nacional</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">0.461</span>
+          <span class="stat-value">0.450</span>
           <span class="stat-label">IIC Máximo</span>
         </div>
         <div class="quick-stat">
@@ -2118,7 +2124,7 @@
 
   <!-- ---- PER DIMENSION ---- -->
   
-  <section class="page" id="gaspar_catarina-ip">
+  <section class="page dim-section" id="gaspar_catarina-ip">
     <h2 class="section-title" style="border-color: #eb8026;">
       IP — Grupos Prioritários
       
@@ -2193,7 +2199,7 @@
     
   </section>
   
-  <section class="page" id="gaspar_catarina-iv">
+  <section class="page dim-section" id="gaspar_catarina-iv">
     <h2 class="section-title" style="border-color: #3855a3;">
       IV — Vulnerabilidade Socioeconômica
       
@@ -2268,15 +2274,15 @@
     
   </section>
   
-  <section class="page" id="gaspar_catarina-ie">
+  <section class="page dim-section" id="gaspar_catarina-ie">
     <h2 class="section-title" style="border-color: #32864b;">
       IE — Exposição a Riscos Climáticos
       
     </h2>
 
     <div class="dim-score-bar">
-      <span>Média no município: <strong>0.144</strong></span>
-      <span>Média Brasil: <strong>0.161</strong></span>
+      <span>Média no município: <strong>0.073</strong></span>
+      <span>Média Brasil: <strong>0.123</strong></span>
       
     </div>
 
@@ -2331,7 +2337,7 @@
     
   </section>
   
-  <section class="page" id="gaspar_catarina-ig">
+  <section class="page dim-section" id="gaspar_catarina-ig">
     <h2 class="section-title" style="border-color: #9b216c;">
       IG — Capacidade de Gestão Municipal
       <span class="invert-note">(invertida no IIC)</span>
@@ -2456,15 +2462,15 @@
       <h1>Palmas</h1>
       <div class="city-quick-stats">
         <div class="quick-stat">
-          <span class="stat-value">0.312</span>
+          <span class="stat-value">0.297</span>
           <span class="stat-label">IIC Médio</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">22.3%</span>
+          <span class="stat-value">22.6%</span>
           <span class="stat-label">Percentil Nacional</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">0.563</span>
+          <span class="stat-value">0.549</span>
           <span class="stat-label">IIC Máximo</span>
         </div>
         <div class="quick-stat">
@@ -2492,7 +2498,7 @@
 
   <!-- ---- PER DIMENSION ---- -->
   
-  <section class="page" id="palmas_tocantins-ip">
+  <section class="page dim-section" id="palmas_tocantins-ip">
     <h2 class="section-title" style="border-color: #eb8026;">
       IP — Grupos Prioritários
       
@@ -2567,7 +2573,7 @@
     
   </section>
   
-  <section class="page" id="palmas_tocantins-iv">
+  <section class="page dim-section" id="palmas_tocantins-iv">
     <h2 class="section-title" style="border-color: #3855a3;">
       IV — Vulnerabilidade Socioeconômica
       
@@ -2642,15 +2648,15 @@
     
   </section>
   
-  <section class="page" id="palmas_tocantins-ie">
+  <section class="page dim-section" id="palmas_tocantins-ie">
     <h2 class="section-title" style="border-color: #32864b;">
       IE — Exposição a Riscos Climáticos
       
     </h2>
 
     <div class="dim-score-bar">
-      <span>Média no município: <strong>0.200</strong></span>
-      <span>Média Brasil: <strong>0.161</strong></span>
+      <span>Média no município: <strong>0.142</strong></span>
+      <span>Média Brasil: <strong>0.123</strong></span>
       
     </div>
 
@@ -2705,7 +2711,7 @@
     
   </section>
   
-  <section class="page" id="palmas_tocantins-ig">
+  <section class="page dim-section" id="palmas_tocantins-ig">
     <h2 class="section-title" style="border-color: #9b216c;">
       IG — Capacidade de Gestão Municipal
       <span class="invert-note">(invertida no IIC)</span>
@@ -2830,15 +2836,15 @@
       <h1>Dourados</h1>
       <div class="city-quick-stats">
         <div class="quick-stat">
-          <span class="stat-value">0.263</span>
+          <span class="stat-value">0.252</span>
           <span class="stat-label">IIC Médio</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">10.7%</span>
+          <span class="stat-value">11.5%</span>
           <span class="stat-label">Percentil Nacional</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">0.503</span>
+          <span class="stat-value">0.513</span>
           <span class="stat-label">IIC Máximo</span>
         </div>
         <div class="quick-stat">
@@ -2866,7 +2872,7 @@
 
   <!-- ---- PER DIMENSION ---- -->
   
-  <section class="page" id="dourados_sul-ip">
+  <section class="page dim-section" id="dourados_sul-ip">
     <h2 class="section-title" style="border-color: #eb8026;">
       IP — Grupos Prioritários
       
@@ -2941,7 +2947,7 @@
     
   </section>
   
-  <section class="page" id="dourados_sul-iv">
+  <section class="page dim-section" id="dourados_sul-iv">
     <h2 class="section-title" style="border-color: #3855a3;">
       IV — Vulnerabilidade Socioeconômica
       
@@ -3016,15 +3022,15 @@
     
   </section>
   
-  <section class="page" id="dourados_sul-ie">
+  <section class="page dim-section" id="dourados_sul-ie">
     <h2 class="section-title" style="border-color: #32864b;">
       IE — Exposição a Riscos Climáticos
       
     </h2>
 
     <div class="dim-score-bar">
-      <span>Média no município: <strong>0.148</strong></span>
-      <span>Média Brasil: <strong>0.161</strong></span>
+      <span>Média no município: <strong>0.102</strong></span>
+      <span>Média Brasil: <strong>0.123</strong></span>
       
     </div>
 
@@ -3079,7 +3085,7 @@
     
   </section>
   
-  <section class="page" id="dourados_sul-ig">
+  <section class="page dim-section" id="dourados_sul-ig">
     <h2 class="section-title" style="border-color: #9b216c;">
       IG — Capacidade de Gestão Municipal
       <span class="invert-note">(invertida no IIC)</span>
@@ -3204,15 +3210,15 @@
       <h1>Cáceres</h1>
       <div class="city-quick-stats">
         <div class="quick-stat">
-          <span class="stat-value">0.389</span>
+          <span class="stat-value">0.364</span>
           <span class="stat-label">IIC Médio</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">47.0%</span>
+          <span class="stat-value">42.8%</span>
           <span class="stat-label">Percentil Nacional</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">0.583</span>
+          <span class="stat-value">0.541</span>
           <span class="stat-label">IIC Máximo</span>
         </div>
         <div class="quick-stat">
@@ -3240,7 +3246,7 @@
 
   <!-- ---- PER DIMENSION ---- -->
   
-  <section class="page" id="caceres_grosso-ip">
+  <section class="page dim-section" id="caceres_grosso-ip">
     <h2 class="section-title" style="border-color: #eb8026;">
       IP — Grupos Prioritários
       
@@ -3315,7 +3321,7 @@
     
   </section>
   
-  <section class="page" id="caceres_grosso-iv">
+  <section class="page dim-section" id="caceres_grosso-iv">
     <h2 class="section-title" style="border-color: #3855a3;">
       IV — Vulnerabilidade Socioeconômica
       
@@ -3390,15 +3396,15 @@
     
   </section>
   
-  <section class="page" id="caceres_grosso-ie">
+  <section class="page dim-section" id="caceres_grosso-ie">
     <h2 class="section-title" style="border-color: #32864b;">
       IE — Exposição a Riscos Climáticos
       
     </h2>
 
     <div class="dim-score-bar">
-      <span>Média no município: <strong>0.306</strong></span>
-      <span>Média Brasil: <strong>0.161</strong></span>
+      <span>Média no município: <strong>0.203</strong></span>
+      <span>Média Brasil: <strong>0.123</strong></span>
       
     </div>
 
@@ -3453,7 +3459,7 @@
     
   </section>
   
-  <section class="page" id="caceres_grosso-ig">
+  <section class="page dim-section" id="caceres_grosso-ig">
     <h2 class="section-title" style="border-color: #9b216c;">
       IG — Capacidade de Gestão Municipal
       <span class="invert-note">(invertida no IIC)</span>
@@ -3578,15 +3584,15 @@
       <h1>Mariana</h1>
       <div class="city-quick-stats">
         <div class="quick-stat">
-          <span class="stat-value">0.362</span>
+          <span class="stat-value">0.353</span>
           <span class="stat-label">IIC Médio</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">37.9%</span>
+          <span class="stat-value">39.5%</span>
           <span class="stat-label">Percentil Nacional</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">0.504</span>
+          <span class="stat-value">0.509</span>
           <span class="stat-label">IIC Máximo</span>
         </div>
         <div class="quick-stat">
@@ -3614,7 +3620,7 @@
 
   <!-- ---- PER DIMENSION ---- -->
   
-  <section class="page" id="mariana_gerais-ip">
+  <section class="page dim-section" id="mariana_gerais-ip">
     <h2 class="section-title" style="border-color: #eb8026;">
       IP — Grupos Prioritários
       
@@ -3689,7 +3695,7 @@
     
   </section>
   
-  <section class="page" id="mariana_gerais-iv">
+  <section class="page dim-section" id="mariana_gerais-iv">
     <h2 class="section-title" style="border-color: #3855a3;">
       IV — Vulnerabilidade Socioeconômica
       
@@ -3764,15 +3770,15 @@
     
   </section>
   
-  <section class="page" id="mariana_gerais-ie">
+  <section class="page dim-section" id="mariana_gerais-ie">
     <h2 class="section-title" style="border-color: #32864b;">
       IE — Exposição a Riscos Climáticos
       
     </h2>
 
     <div class="dim-score-bar">
-      <span>Média no município: <strong>0.236</strong></span>
-      <span>Média Brasil: <strong>0.161</strong></span>
+      <span>Média no município: <strong>0.201</strong></span>
+      <span>Média Brasil: <strong>0.123</strong></span>
       
     </div>
 
@@ -3827,7 +3833,7 @@
     
   </section>
   
-  <section class="page" id="mariana_gerais-ig">
+  <section class="page dim-section" id="mariana_gerais-ig">
     <h2 class="section-title" style="border-color: #9b216c;">
       IG — Capacidade de Gestão Municipal
       <span class="invert-note">(invertida no IIC)</span>
@@ -3956,7 +3962,7 @@
           <span class="stat-label">IIC Médio</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">7.0%</span>
+          <span class="stat-value">9.6%</span>
           <span class="stat-label">Percentil Nacional</span>
         </div>
         <div class="quick-stat">
@@ -3988,7 +3994,7 @@
 
   <!-- ---- PER DIMENSION ---- -->
   
-  <section class="page" id="olinda_pernambuco-ip">
+  <section class="page dim-section" id="olinda_pernambuco-ip">
     <h2 class="section-title" style="border-color: #eb8026;">
       IP — Grupos Prioritários
       
@@ -4063,7 +4069,7 @@
     
   </section>
   
-  <section class="page" id="olinda_pernambuco-iv">
+  <section class="page dim-section" id="olinda_pernambuco-iv">
     <h2 class="section-title" style="border-color: #3855a3;">
       IV — Vulnerabilidade Socioeconômica
       
@@ -4138,15 +4144,15 @@
     
   </section>
   
-  <section class="page" id="olinda_pernambuco-ie">
+  <section class="page dim-section" id="olinda_pernambuco-ie">
     <h2 class="section-title" style="border-color: #32864b;">
       IE — Exposição a Riscos Climáticos
       
     </h2>
 
     <div class="dim-score-bar">
-      <span>Média no município: <strong>0.046</strong></span>
-      <span>Média Brasil: <strong>0.161</strong></span>
+      <span>Média no município: <strong>0.049</strong></span>
+      <span>Média Brasil: <strong>0.123</strong></span>
       
     </div>
 
@@ -4213,7 +4219,7 @@
     
   </section>
   
-  <section class="page" id="olinda_pernambuco-ig">
+  <section class="page dim-section" id="olinda_pernambuco-ig">
     <h2 class="section-title" style="border-color: #9b216c;">
       IG — Capacidade de Gestão Municipal
       <span class="invert-note">(invertida no IIC)</span>
@@ -4326,15 +4332,15 @@
       <h1>Parauapebas</h1>
       <div class="city-quick-stats">
         <div class="quick-stat">
-          <span class="stat-value">0.371</span>
+          <span class="stat-value">0.369</span>
           <span class="stat-label">IIC Médio</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">41.1%</span>
+          <span class="stat-value">44.4%</span>
           <span class="stat-label">Percentil Nacional</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">0.498</span>
+          <span class="stat-value">0.507</span>
           <span class="stat-label">IIC Máximo</span>
         </div>
         <div class="quick-stat">
@@ -4362,7 +4368,7 @@
 
   <!-- ---- PER DIMENSION ---- -->
   
-  <section class="page" id="parauapebas_para-ip">
+  <section class="page dim-section" id="parauapebas_para-ip">
     <h2 class="section-title" style="border-color: #eb8026;">
       IP — Grupos Prioritários
       
@@ -4437,7 +4443,7 @@
     
   </section>
   
-  <section class="page" id="parauapebas_para-iv">
+  <section class="page dim-section" id="parauapebas_para-iv">
     <h2 class="section-title" style="border-color: #3855a3;">
       IV — Vulnerabilidade Socioeconômica
       
@@ -4512,15 +4518,15 @@
     
   </section>
   
-  <section class="page" id="parauapebas_para-ie">
+  <section class="page dim-section" id="parauapebas_para-ie">
     <h2 class="section-title" style="border-color: #32864b;">
       IE — Exposição a Riscos Climáticos
       
     </h2>
 
     <div class="dim-score-bar">
-      <span>Média no município: <strong>0.244</strong></span>
-      <span>Média Brasil: <strong>0.161</strong></span>
+      <span>Média no município: <strong>0.234</strong></span>
+      <span>Média Brasil: <strong>0.123</strong></span>
       
     </div>
 
@@ -4575,7 +4581,7 @@
     
   </section>
   
-  <section class="page" id="parauapebas_para-ig">
+  <section class="page dim-section" id="parauapebas_para-ig">
     <h2 class="section-title" style="border-color: #9b216c;">
       IG — Capacidade de Gestão Municipal
       <span class="invert-note">(invertida no IIC)</span>
@@ -4700,15 +4706,15 @@
       <h1>Rio Branco</h1>
       <div class="city-quick-stats">
         <div class="quick-stat">
-          <span class="stat-value">0.411</span>
+          <span class="stat-value">0.413</span>
           <span class="stat-label">IIC Médio</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">54.2%</span>
+          <span class="stat-value">57.7%</span>
           <span class="stat-label">Percentil Nacional</span>
         </div>
         <div class="quick-stat">
-          <span class="stat-value">0.555</span>
+          <span class="stat-value">0.583</span>
           <span class="stat-label">IIC Máximo</span>
         </div>
         <div class="quick-stat">
@@ -4736,7 +4742,7 @@
 
   <!-- ---- PER DIMENSION ---- -->
   
-  <section class="page" id="rio_branco_acre-ip">
+  <section class="page dim-section" id="rio_branco_acre-ip">
     <h2 class="section-title" style="border-color: #eb8026;">
       IP — Grupos Prioritários
       
@@ -4811,7 +4817,7 @@
     
   </section>
   
-  <section class="page" id="rio_branco_acre-iv">
+  <section class="page dim-section" id="rio_branco_acre-iv">
     <h2 class="section-title" style="border-color: #3855a3;">
       IV — Vulnerabilidade Socioeconômica
       
@@ -4886,15 +4892,15 @@
     
   </section>
   
-  <section class="page" id="rio_branco_acre-ie">
+  <section class="page dim-section" id="rio_branco_acre-ie">
     <h2 class="section-title" style="border-color: #32864b;">
       IE — Exposição a Riscos Climáticos
       
     </h2>
 
     <div class="dim-score-bar">
-      <span>Média no município: <strong>0.252</strong></span>
-      <span>Média Brasil: <strong>0.161</strong></span>
+      <span>Média no município: <strong>0.262</strong></span>
+      <span>Média Brasil: <strong>0.123</strong></span>
       
     </div>
 
@@ -4949,7 +4955,7 @@
     
   </section>
   
-  <section class="page" id="rio_branco_acre-ig">
+  <section class="page dim-section" id="rio_branco_acre-ig">
     <h2 class="section-title" style="border-color: #9b216c;">
       IG — Capacidade de Gestão Municipal
       <span class="invert-note">(invertida no IIC)</span>
@@ -5106,12 +5112,10 @@
 <h3>v5 — Infraestrutura:</h3>
 <p>Percentual de domicílios sem coleta de esgoto, sem abastecimento de água e/ou sem coleta de lixo. Variáveis: v00311–v00316 (esgoto), v00112–v00118 (água), v00399–v00402 (lixo), em lógica OR; denominador v00001. O numerador é limitado ao denominador para evitar dupla contagem. Normalização min-max (p1%–p99%).</p>
 <h1>Dimensão de Exposição (e1–e5)</h1>
-<h3>E1 — Deslizamentos de terra <em>(fonte: NASA LHASA / Stanley &amp; Kirschbaum 2017, via Google Earth Engine)</em>:</h3>
-<p>Fração da área de cada hexágono em zona de Alta ou Muito Alta suscetibilidade a deslizamentos de terra, segundo o NASA Global Landslide Susceptibility Map (LHASA).</p>
-<p>O LHASA é um modelo multicritério (fuzzy overlay) que combina cinco variáveis: declividade (slope), litologia, perda de cobertura florestal, densidade de estradas e distância a falhas geológicas. O raster classifica cada pixel (~1 km de resolução) em cinco níveis: 1 (Very Low), 2 (Low), 3 (Moderate), 4 (High) e 5 (Very High). Optou-se por esse modelo em substituição ao método baseado em slope puro porque comparações em escala nacional revelaram correlação negativa entre declividade isolada e ocorrência efetiva de deslizamentos: encostas muito íngremes no Brasil correspondem com frequência a afloramentos rochosos consolidados (baixo risco), enquanto áreas de alto risco real (Amazônia desmatada, encostas tropicais úmidas) têm declividades moderadas.</p>
-<p>No GEE, o raster foi processado com <code>Reducer.mean()</code> aplicado a um buffer de 174 m (circunraio do H3 res9), gerando duas métricas por hexágono: <code>lhasa_mean</code> (valor médio 1–5) e <code>lhasa_high_frac</code> (fração da área com LHASA ≥ 4). O indicador E1 utiliza apenas <code>lhasa_high_frac</code>. Normalização min-max sem winsorização — a suscetibilidade é geograficamente concentrada e a winsorização nos percentis 1%–99% colapsaria a cauda para zero na maior parte do território.</p>
+<h3>E1 — Deslizamentos de terra <em>(fonte: MapBiomas, 2025 - Coleção Risco Climático)</em>:</h3>
+<p>Percentual de domicílios em zonas de Média, Alta ou Muito Alta suscetibilidade a deslizamentos de terra.</p>
 <h3>E2 — Inundações <em>(fonte: HAND global + JRC Global River Flood Hazard v2.1, via Google Earth Engine)</em>:</h3>
-<p>Score médio de suscetibilidade a inundações por hexágono, combinando o modelo de terreno HAND (Height Above Nearest Drainage) com a máscara de perigo do JRC Global River Flood Hazard Maps.</p>
+<p>Score médio de suscetibilidade a inundações por hexágonos habitados, combinando o modelo de terreno HAND (Height Above Nearest Drainage, resolução ~30 m, derivado do SRTM) com a máscara de perigo do JRC Global River Flood Hazard Maps (resolução ~1 km).</p>
 <p>A metodologia é adaptada da Coleção 1 do MapBiomas Risco Climático (2024), removida a máscara de áreas urbanas que limitava o produto original a perímetros do Open Buildings — assim, o indicador alcança cobertura nacional independente de uso da terra. No GEE, cada pixel recebe um score classificado pelo HAND:</p>
 <table>
 <thead>
@@ -5541,7 +5545,7 @@
 
   <!-- ---- FOOTER ---- -->
   <section class="page report-footer">
-    Relatório gerado em 15/05/2026 &nbsp;·&nbsp; WRI Brasil &nbsp;·&nbsp; Índice de Injustiça Climática
+    Relatório gerado em 18/05/2026 &nbsp;·&nbsp; WRI Brasil &nbsp;·&nbsp; Índice de Injustiça Climática
   </section>
 
 </main>
@@ -5623,7 +5627,23 @@
     if (e.key === 'Escape') lb.classList.remove('active');
   });
 
+  /* ---- MOBILE: close sidebar when clicking a link ---- */
+  document.querySelectorAll('#sidebar a').forEach(function (a) {
+    a.addEventListener('click', function () {
+      if (window.innerWidth <= 900) {
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('sidebar-backdrop').classList.remove('active');
+      }
+    });
+  });
+
 })();
+
+/* ---- MOBILE: toggle sidebar (global, called from button) ---- */
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-backdrop').classList.toggle('active');
+}
 </script>
 </body>
 </html>

@@ -4,6 +4,8 @@ Reads existing parquets and prints a distribution table for each indicator.
 
 Indicators with an _abs column: checks P99 for winsorisation collapse risk.
 Indicators without _abs (e.g. municipal binary variables): analyses the _norm column directly.
+
+Also validates that _norm columns are present and normalized to [0, 1].
 """
 
 import pandas as pd
@@ -18,19 +20,19 @@ from src import config as cfg
 
 print(f"\n{'Ind':<5} {'Column':<22} {'Total':>8} {'N>0':>8} {'%>0':>6} "
       f"{'P01':>8} {'P99':>8} {'Max':>8}  {'Status'}")
-print("─" * 95)
+print("-" * 95)
 
 for key, path in cfg.FILES_H3.items():
     if key == "base_metadata":
         continue
     if not path.exists():
-        print(f"{key:<5} {'—':<22} {'file not found'}")
+        print(f"{key:<5} {'-':<22} {'file not found'}")
         continue
 
     try:
         df = pd.read_parquet(path)
     except Exception as e:
-        print(f"{key:<5} {'—':<22} ERROR: {e}")
+        print(f"{key:<5} {'-':<22} ERROR: {e}")
         continue
 
     col_norm = cfg.COLUMN_MAP.get(key)
@@ -41,7 +43,7 @@ for key, path in cfg.FILES_H3.items():
     # --- Indicadores sem coluna _abs (ex: binários por município) ---
     if col_abs not in df.columns:
         if col_norm not in df.columns:
-            print(f"{key:<5} {'—':<22} {'abs and norm columns missing'}")
+            print(f"{key:<5} {'-':<22} {'abs and norm columns missing'}")
             continue
 
         s = df[col_norm].dropna()
@@ -52,12 +54,12 @@ for key, path in cfg.FILES_H3.items():
         unique = set(s.unique())
 
         if unique <= {0, 1, 0.0, 1.0}:
-            status = "✓ binário"
+            status = "OK binary"
         else:
-            status = "✓ sem _abs"
+            status = "OK no _abs"
 
         print(f"{key:<5} {col_norm:<22} {total:>8,} {nz:>8,} {pct_nz:>5.1f}% "
-              f"{'—':>8} {'—':>8} {smax:>8.4f}  {status}")
+              f"{'-':>8} {'-':>8} {smax:>8.4f}  {status}")
         continue
 
     # --- Indicadores com coluna _abs ---
@@ -70,17 +72,53 @@ for key, path in cfg.FILES_H3.items():
     smax   = s.max()
 
     if p99 == 0 and pct_nz < 1.0:
-        status = "~ SPARSE   — P99=0 but geographic indicator; use winsorize=False"
+        status = "~ SPARSE   - P99=0 but geographic indicator; use winsorize=False"
     elif p99 == 0:
-        status = "⚠ COLLAPSE — P99=0, normalised column will be all zeros"
+        status = "! COLLAPSE - P99=0, normalised column will be all zeros"
     elif pct_nz < 1.0:
-        status = "⚠ RISK     — <1% non-zero, P99 may be 0 across all of Brazil"
+        status = "! RISK     - <1% non-zero, P99 may be 0 across all of Brazil"
     elif pct_nz < 5.0:
-        status = "~ SPARSE   — check that P99>0 in the full dataset"
+        status = "~ SPARSE   - check that P99>0 in the full dataset"
     else:
-        status = "✓"
+        status = "OK"
 
     print(f"{key:<5} {col_abs:<22} {total:>8,} {nz:>8,} {pct_nz:>5.1f}% "
           f"{p01:>8.4f} {p99:>8.4f} {smax:>8.4f}  {status}")
+
+print("\n" + "-" * 95)
+print("\nValidation of normalized columns (_norm):\n")
+print(f"{'Ind':<5} {'Column':<22} {'Min':>8} {'Max':>8} {'Mean':>8} {'Total':>10}")
+print("-" * 70)
+
+for key, path in cfg.FILES_H3.items():
+    if key == "base_metadata":
+        continue
+    if not path.exists():
+        continue
+
+    try:
+        df = pd.read_parquet(path)
+    except Exception:
+        continue
+
+    col_norm = cfg.COLUMN_MAP.get(key)
+    if not col_norm or col_norm not in df.columns:
+        continue
+
+    s = df[col_norm].dropna()
+    if len(s) == 0:
+        continue
+
+    smin = s.min()
+    smax = s.max()
+    smean = s.mean()
+
+    # Verificar se está normalizado [0, 1]
+    if smin >= 0 and smax <= 1:
+        status = "OK"
+    else:
+        status = f"! fora de [0,1]: [{smin:.4f}, {smax:.4f}]"
+
+    print(f"{key:<5} {col_norm:<22} {smin:>8.4f} {smax:>8.4f} {smean:>8.4f} {len(s):>10,}")
 
 print()

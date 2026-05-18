@@ -73,6 +73,12 @@
   }
 </script>
 
+<!-- ================================================================ MOBILE MENU -->
+<button id="menu-toggle" aria-label="Abrir menu" onclick="toggleSidebar()">
+  <span></span><span></span><span></span>
+</button>
+<div id="sidebar-backdrop" onclick="toggleSidebar()"></div>
+
 <!-- ================================================================ SIDEBAR -->
 <nav id="sidebar">
   <div class="sidebar-brand">
@@ -295,7 +301,7 @@
 
   <!-- ---- PER DIMENSION ---- -->
   {% for abbr, dim in city.dims.items() %}
-  <section class="page" id="{{ city.slug }}-{{ abbr }}">
+  <section class="page dim-section" id="{{ city.slug }}-{{ abbr }}">
     <h2 class="section-title" style="border-color: {{ dim.color }};">
       {{ dim.abbr_upper }} — {{ dim.label }}
       {% if dim.invert %}<span class="invert-note">(invertida no IIC)</span>{% endif %}
@@ -426,7 +432,23 @@
     if (e.key === 'Escape') lb.classList.remove('active');
   });
 
+  /* ---- MOBILE: close sidebar when clicking a link ---- */
+  document.querySelectorAll('#sidebar a').forEach(function (a) {
+    a.addEventListener('click', function () {
+      if (window.innerWidth <= 900) {
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('sidebar-backdrop').classList.remove('active');
+      }
+    });
+  });
+
 })();
+
+/* ---- MOBILE: toggle sidebar (global, called from button) ---- */
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-backdrop').classList.toggle('active');
+}
 </script>
 </body>
 </html>
