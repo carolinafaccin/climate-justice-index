@@ -73,8 +73,11 @@ explore/
 └── utils.py                  # Utilitários compartilhados pelos scripts de explore/
 
 report/                       # Geração do relatório HTML
+decisions/                    # Architecture Decision Records (ADRs) — registro das decisões metodológicas
 logs/                         # Logs de execução (gitignored)
 ```
+
+A pasta `decisions/` contém o log estruturado das decisões metodológicas e conceituais do índice em formato MADR light. Veja [decisions/0001-registro-de-decisoes.md](decisions/0001-registro-de-decisoes.md) para o sistema completo e convenções de uso.
 
 ### Saídas em `data_dir/outputs/results/`
 
