@@ -4,7 +4,7 @@
 Accepted — 2026-05-19
 
 ## Contexto
-A dimensão IE inclui cinco ameaças climáticas (e1 deslizamentos, e2 inundações, e3 elevação do mar, e4 calor extremo, e5 queimadas — ADRs 0020-0024). Outras ameaças foram propostas pelos especialistas nas duas rodadas de validação. Duas têm ADRs específicos por terem código preservado em `archive/`: ADR-0030 (seca SPI/CHIRPS) e ADR-0031 (NDVI áreas verdes — embora seja IV, está intimamente conectado a e4). Este ADR registra os demais descartes.
+A dimensão IE inclui cinco ameaças climáticas (e1 deslizamentos, e2 inundações, e3 elevação do mar, e4 calor extremo, e5 queimadas — ADRs 0020-0024). Outras ameaças foram propostas pelos especialistas nas duas rodadas de validação. Duas têm ADRs específicos por terem código preservado em `etl/discarded/`: ADR-0030 (seca SPI/CHIRPS) e ADR-0031 (NDVI áreas verdes — embora seja IV, está intimamente conectado a e4). Este ADR registra os demais descartes.
 
 ## Decisão
 Registrar variáveis consideradas e descartadas para a dimensão IE.

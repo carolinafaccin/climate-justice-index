@@ -4,7 +4,7 @@
 Accepted — 2026-05-19
 
 ## Contexto
-Durante o desenho do IIC e nas duas rodadas de validação, especialistas sugeriram variáveis adicionais para a dimensão IV além das cinco incluídas (v1 renda, v2 moradia, v3 analfabetismo, v4 saúde, v5 infraestrutura — ADRs 0018 e 0019). O ADR-0030 trata especificamente do NDVI de áreas verdes (caso com material em `archive/`). Este ADR registra os demais descartes da dimensão.
+Durante o desenho do IIC e nas duas rodadas de validação, especialistas sugeriram variáveis adicionais para a dimensão IV além das cinco incluídas (v1 renda, v2 moradia, v3 analfabetismo, v4 saúde, v5 infraestrutura — ADRs 0018 e 0019). O ADR-0031 trata especificamente do NDVI de áreas verdes (caso com código preservado em `etl/discarded/`). Este ADR registra os demais descartes da dimensão.
 
 ## Decisão
 Registrar variáveis consideradas e descartadas para a dimensão IV, com a categoria de exclusão do ADR-0008.

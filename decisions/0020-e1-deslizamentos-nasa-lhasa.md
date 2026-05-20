@@ -1,7 +1,7 @@
 # ADR-0020: Usar NASA LHASA para o indicador e1 (Deslizamentos de terra)
 
 ## Status
-Accepted — 2026-05-19. Substitui implementação anterior baseada em slope puro (CPRM/IPT), preservada em `archive/e1_deslizamentos_slope.py` e `archive/h3_suscetibilidade_deslizamentos_slope_gee_v1.js`. A implementação anterior nunca foi formalizada em ADR — supersedure registrada aqui.
+Accepted — 2026-05-19. Substitui implementação anterior baseada em slope puro (CPRM/IPT), preservada em `etl/discarded/e1_deslizamentos_slope.py` e `etl/discarded/h3_e1_deslizamentos_slope_gee.js`. A implementação anterior nunca foi formalizada em ADR — supersedure registrada aqui.
 
 ## Contexto
 Deslizamentos de terra são uma das principais ameaças climáticas no Brasil (encostas tropicais, eventos extremos de chuva). Precisamos de um indicador de suscetibilidade que: (i) tenha cobertura nacional uniforme; (ii) capture o risco real, não apenas a condição geomorfológica; (iii) seja reproduzível a partir de bases abertas.
@@ -21,7 +21,7 @@ Usar o **NASA LHASA — Global Landslide Susceptibility Map** como base do indic
 **Métrica do indicador e1:** `lhasa_high_frac` — fração da área do hexágono com LHASA ≥ 4 (classes High ou Very High), restrita a hexágonos habitados. Normalização min-max **sem winsorização** (ADR-0016) — suscetibilidade é geograficamente concentrada (~8% dos hexágonos).
 
 ## Alternativas consideradas
-- **Slope puro com limiares CPRM/IPT (descartado)**: simples e usa DEM Copernicus aberto, mas calibração regional não generaliza; correlação negativa nacional contra LHASA é evidência forte de inadequação. Preservado em `archive/` para referência histórica e auditoria.
+- **Slope puro com limiares CPRM/IPT (descartado)**: simples e usa DEM Copernicus aberto, mas calibração regional não generaliza; correlação negativa nacional contra LHASA é evidência forte de inadequação. Preservado em `etl/discarded/` para referência histórica e auditoria.
 - **MapBiomas Risco Climático — Deslizamentos**: produto nacional, mas com máscara restrita a perímetros urbanos do Open Buildings — incompatível com a premissa de cobertura nacional (incluindo áreas rurais e periurbanas).
 - **Modelo próprio multicritério**: replicar LHASA localmente exigiria curar fontes equivalentes (litologia, perda de floresta, densidade de estradas) e calibrar contra inventário brasileiro — investimento elevado sem ganho claro sobre LHASA.
 - **NASA LHASA (escolhido)**: modelo já calibrado globalmente; aplicável uniformemente ao Brasil; disponível como asset GEE; multicritério com fundamentos físicos defensáveis.
@@ -35,6 +35,6 @@ Usar o **NASA LHASA — Global Landslide Susceptibility Map** como base do indic
 - ADR-0009 (grade H3), ADR-0012 (normalização), ADR-0016 (e1 sem winsorização).
 - [report/methodological_notes_e1_deslizamentos.md](../report/methodological_notes_e1_deslizamentos.md) — registro detalhado da decisão e da validação.
 - [etl/exposure/e1_deslizamentos_lhasa.py](../etl/exposure/e1_deslizamentos_lhasa.py) — ETL oficial.
-- [archive/e1_validacao_slope_lhasa.py](../archive/e1_validacao_slope_lhasa.py) — script da validação cruzada.
-- [archive/e1_deslizamentos_slope.py](../archive/e1_deslizamentos_slope.py), [archive/h3_suscetibilidade_deslizamentos_slope_gee_v1.js](../archive/h3_suscetibilidade_deslizamentos_slope_gee_v1.js) — implementação descontinuada.
+- [etl/discarded/e1_validacao_slope_lhasa.py](../etl/discarded/e1_validacao_slope_lhasa.py) — script da validação cruzada.
+- [etl/discarded/e1_deslizamentos_slope.py](../etl/discarded/e1_deslizamentos_slope.py), [etl/discarded/h3_e1_deslizamentos_slope_gee.js](../etl/discarded/h3_e1_deslizamentos_slope_gee.js) — implementação descontinuada.
 - Stanley, T. A. & Kirschbaum, D. B. (2017). A heuristic approach to global landslide susceptibility mapping. *Natural Hazards*, 87(1), 145–164.

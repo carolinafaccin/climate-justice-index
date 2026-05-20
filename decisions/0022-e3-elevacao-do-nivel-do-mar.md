@@ -36,6 +36,6 @@ Normalização min-max **sem winsorização** (ADR-0016) — indicador costeiro 
 ## Referências
 - ADR-0009 (grade H3), ADR-0012 (normalização), ADR-0016 (e3 sem winsorização).
 - [etl/exposure/e3_mar.py](../etl/exposure/e3_mar.py) — ETL oficial.
-- [archive/h3_elevacao_mar_copernicus-dem_gee.js](../archive/h3_elevacao_mar_copernicus-dem_gee.js) — versão anterior do script GEE (asset atualizado).
+- [etl/discarded/h3_e3_elevacao_mar_copernicus-dem_gee.js](../etl/discarded/h3_e3_elevacao_mar_copernicus-dem_gee.js) — versão anterior do script GEE (asset atualizado).
 - [report/methodological_notes.md](../report/methodological_notes.md) — seção e3.
 - Feedback da primeira rodada de validação (SP), seção sobre elevação do nível do mar.

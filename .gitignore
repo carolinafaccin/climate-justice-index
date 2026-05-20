@@ -214,9 +214,7 @@ config/cities.json
 
 # Folders
 __pycache__/
-archive/
 logs/
-archive/
 .claude/
 manuscript/
 .DS_Store

@@ -101,5 +101,5 @@ Análise identifica onde estão concentrados e qual distribuição de HAND suger
 - ADR-0020: decisão de usar NASA LHASA para E1
 - ADR-0021: decisão de usar HAND+JRC para E2
 - ADR-0032: (a criar) documenta metodologia de calibração SGB
-- `archive/e1_validacao_slope_lhasa.py`: padrão de script de validação/correlação a seguir
+- `etl/discarded/e1_validacao_slope_lhasa.py`: padrão de script de validação/correlação a seguir
 - Site SGB: https://www.sgb.gov.br/produtos-por-estado-cartografia-de-suscetibilidade
