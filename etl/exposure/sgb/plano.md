@@ -7,46 +7,51 @@ Usar a Cartografia de Suscetibilidade do SGB/CPRM (~800 municípios) como ground
 - **E1 (deslizamentos):** calibrar o threshold do NASA LHASA (atualmente `lhasa_high_frac >= 4`)
 - **E2 (inundações):** validar o teto de 6m do HAND e recomendar novo threshold
 
-## Scripts a criar (nesta pasta)
+## Scripts (nesta pasta)
 
 | Script | O que faz | Inputs | Outputs |
 |---|---|---|---|
-| `00_sgb_scraper.py` | Download automatizado do site SGB | URL do SGB | `data/inputs/raw/sgb/raw_zips/` + manifest CSV |
-| `01_sgb_harmonize.py` | Lê ZIPs, detecta campo de classe, mapeia → escala 1-5 | ZIPs + `class_mapping.json` | `sgb_massa_br.gpkg`, `sgb_inundacoes_br.gpkg` |
-| `02_sgb_h3_intersect.py` | Overlay com grade H3, calcula fração de área por classe | GeoPackages + H3 base | `br_h3_sgb_massa.parquet`, `br_h3_sgb_inundacoes.parquet` |
-| `03_sgb_rasterize.py` | Rasteriza para GeoTIFF 30m (archival + GEE futuro) | GeoPackages | `sgb_massa_br_30m.tif`, `sgb_inundacoes_br_30m.tif` |
-| `04_sgb_calibrate_e1.py` | Sweep de threshold LHASA vs SGB massa | e1 parquet + sgb_massa parquet | diagnóstico TXT |
-| `05_sgb_validate_e2.py` | HAND+JRC vs SGB inundações, análise de falsos negativos | e2 parquet + sgb_inundacoes parquet | diagnóstico TXT |
+| `00_sgb_scraper.py` | Download automatizado do site SGB | URL do SGB | `raw_zips/` + `sgb_download_manifest.csv` |
+| `01_sgb_explore.py` | Inventaria os ZIPs: lista shapefiles, detecta colunas e valores de classe | `raw_zips/` | `sgb_inventory.csv`, `class_mapping_template.json`, `class_mapping.json` |
+| `02_sgb_harmonize.py` | Lê ZIPs via inventory, mapeia classe → escala 0-5, consolida em GeoPackages | `raw_zips/` + `sgb_inventory.csv` + `class_mapping.json` | `sgb_massa_br.gpkg`, `sgb_inundacoes_br.gpkg` |
+| `03_sgb_h3_intersect.py` | Overlay com grade H3, calcula fração de área por classe | GeoPackages + H3 base | `br_h3_sgb_massa.parquet`, `br_h3_sgb_inundacoes.parquet` |
+| `04_sgb_rasterize.py` | Rasteriza para GeoTIFF 30m (archival + GEE futuro) | GeoPackages | `sgb_massa_br_30m.tif`, `sgb_inundacoes_br_30m.tif` |
+| `05_sgb_calibrate_e1.py` | Sweep de threshold LHASA vs SGB massa | e1 parquet + sgb_massa parquet | diagnóstico TXT |
+| `06_sgb_validate_e2.py` | HAND+JRC vs SGB inundações, análise de falsos negativos | e2 parquet + sgb_inundacoes parquet | diagnóstico TXT |
 
 ## Estrutura de dados esperada
 
 ```
 data/inputs/raw/sgb/
-├── raw_zips/                   # ZIPs baixados do SGB, um por município
+├── raw_zips/                    # ZIPs baixados do SGB, um por município
 ├── harmonized/
-│   ├── sgb_massa_br.gpkg       # output do 01
-│   └── sgb_inundacoes_br.gpkg  # output do 01
+│   ├── sgb_massa_br.gpkg        # output do 02
+│   └── sgb_inundacoes_br.gpkg   # output do 02
 ├── rasters/
-│   ├── sgb_massa_br_30m.tif    # output do 03
+│   ├── sgb_massa_br_30m.tif     # output do 04
 │   └── sgb_inundacoes_br_30m.tif
-├── sgb_download_manifest.csv   # criado pelo 00 (ou manualmente após Claude Cowork)
-└── class_mapping.json          # mapeamento string → int 1-5 (iterativo/manual)
+├── sgb_download_manifest.csv    # criado pelo 00
+├── sgb_inventory.csv            # criado pelo 01 — um registro por SHP por ZIP
+├── class_mapping_template.json  # criado pelo 01 — rascunho do mapeamento
+└── class_mapping.json           # editado manualmente — mapeamento string → int 0-5
 
 data/inputs/clean/
-├── br_h3_sgb_massa.parquet       # output do 02
-└── br_h3_sgb_inundacoes.parquet  # output do 02
+├── br_h3_sgb_massa.parquet       # output do 03
+└── br_h3_sgb_inundacoes.parquet  # output do 03
 ```
 
 ## Fluxo de execução
 
 ```
-Download (Claude Cowork / 00_scraper)
+Download (00_scraper)
   → raw_zips/ + sgb_download_manifest.csv
-  → python etl/exposure/sgb/01_sgb_harmonize.py   (iterar até class_mapping.json completo)
-  → python etl/exposure/sgb/02_sgb_h3_intersect.py (~5–30 min)
-  → python etl/exposure/sgb/03_sgb_rasterize.py   (opcional)
-  → python etl/exposure/sgb/04_sgb_calibrate_e1.py
-  → python etl/exposure/sgb/05_sgb_validate_e2.py
+  → python etl/exposure/sgb/01_sgb_explore.py
+      (revise sgb_inventory.csv e edite class_mapping.json antes de continuar)
+  → python etl/exposure/sgb/02_sgb_harmonize.py   (re-rodar se atualizar class_mapping.json)
+  → python etl/exposure/sgb/03_sgb_h3_intersect.py (~5–30 min)
+  → python etl/exposure/sgb/04_sgb_rasterize.py   (opcional)
+  → python etl/exposure/sgb/05_sgb_calibrate_e1.py
+  → python etl/exposure/sgb/06_sgb_validate_e2.py
 ```
 
 ## Formato do sgb_download_manifest.csv

@@ -6,19 +6,27 @@ Coleta metadados e links de download de todos os municípios disponíveis
 no portal do Serviço Geológico do Brasil (SGB/CPRM), usando a API REST
 do repositório DSpace (rigeo.sgb.gov.br).
 
+Os caminhos de saída (DOWNLOAD_DIR e MANIFEST_PATH) são derivados de
+data_dir em config/config.local.json — não há paths hardcoded.
+
 USO:
-  python sgb_suscetibilidade.py collect              # Fase 1: raspa links e metadados
-  python sgb_suscetibilidade.py download             # Fase 2: baixa arquivos do manifest
-  python sgb_suscetibilidade.py all                  # Ambas em sequência
-  python sgb_suscetibilidade.py report               # Resumo do manifest atual
+  python 00_sgb_scraper.py collect    # Fase 1: raspa links e metadados
+  python 00_sgb_scraper.py download   # Fase 2: baixa arquivos do manifest
+  python 00_sgb_scraper.py all        # Ambas em sequência
+  python 00_sgb_scraper.py report     # Resumo do manifest atual
 
 OPÇÕES:
-  --batch-size N      Arquivos por lote antes de pausar (default: 15)
-  --batch-delay N     Segundos de pausa entre lotes (default: 90)
-  --download-delay N  Segundos entre downloads individuais (default: 10)
-  --page-delay N      Segundos entre requisições de scraping/API (default: 0.8)
-  --state AC,SP,...   Processa apenas os estados listados
-  --no-resume         Ignora manifest existente e recoleta tudo
+  --workers N       Downloads paralelos (default: 6; SGB permite no máximo 6 simultâneos)
+  --page-delay N    Segundos entre requisições de scraping/API (default: 0.8)
+  --state AC,SP,... Processa apenas os estados listados
+  --no-resume       Ignora manifest existente e recoleta tudo
+
+COMPORTAMENTO DE DOWNLOAD:
+  - Arquivos já presentes em DOWNLOAD_DIR são pulados automaticamente,
+    inclusive os baixados manualmente antes de rodar o script.
+  - Cada worker usa sua própria sessão HTTP (necessário pois o SGB limita
+    a velocidade por conexão, não por IP).
+  - Usa arquivo .part durante o download; renomeia ao concluir.
 
 FLUXO TÉCNICO:
   1. Página principal SGB → lista de estados com URLs
@@ -30,27 +38,42 @@ FLUXO TÉCNICO:
 import requests
 from bs4 import BeautifulSoup
 import csv
+import json
 import os
 import time
 import re
 import sys
 import argparse
+import threading
+import concurrent.futures
 from datetime import datetime
 from pathlib import Path
+from rich.progress import (
+    Progress, BarColumn, DownloadColumn, TransferSpeedColumn,
+    TimeRemainingColumn, TextColumn, TaskProgressColumn,
+)
+from rich.console import Console
 
-# ── Configurações de caminho ───────────────────────────────────────────────────
-DOWNLOAD_DIR = Path(
-    "/Users/lina/Library/CloudStorage/"
-    "GoogleDrive-faccincarolina@gmail.com/"
-    "Meu Drive/Workspace/code/data-outputs/"
-    "climate-injustice-index/data/inputs/raw/sgb/raw_zips"
-)
-MANIFEST_PATH = Path(
-    "/Users/lina/Library/CloudStorage/"
-    "GoogleDrive-faccincarolina@gmail.com/"
-    "Meu Drive/Workspace/code/data-outputs/"
-    "climate-injustice-index/data/inputs/raw/sgb/sgb_download_manifest.csv"
-)
+_console = Console()
+
+# ── Configurações de caminho (via config.local.json) ──────────────────────────
+def _load_data_dir() -> Path:
+    project_root = Path(__file__).resolve().parents[3]
+    config_path = project_root / "config" / "config.local.json"
+    if not config_path.exists():
+        raise FileNotFoundError(
+            f"Config não encontrado: {config_path}\n"
+            "Crie config/config.local.json com {\"data_dir\": \"/caminho/para/data/\"}"
+        )
+    with open(config_path) as f:
+        cfg = json.load(f)
+    if "data_dir" not in cfg:
+        raise KeyError("Chave 'data_dir' não encontrada em config.local.json")
+    return Path(cfg["data_dir"])
+
+_DATA_DIR     = _load_data_dir()
+DOWNLOAD_DIR  = _DATA_DIR / "inputs/raw/sgb/raw_zips"
+MANIFEST_PATH = _DATA_DIR / "inputs/raw/sgb/sgb_download_manifest.csv"
 
 # ── URLs base ──────────────────────────────────────────────────────────────────
 SGB_MAIN_URL = "https://www.sgb.gov.br/produtos-por-estado-cartografia-de-suscetibilidade"
@@ -65,10 +88,8 @@ MANIFEST_COLS = [
 ]
 
 # ── Delays padrão (segundos) ───────────────────────────────────────────────────
-DEFAULT_PAGE_DELAY     = 0.8   # entre requisições de scraping/API
-DEFAULT_DOWNLOAD_DELAY = 10    # entre downloads individuais
-DEFAULT_BATCH_SIZE     = 15    # arquivos por lote
-DEFAULT_BATCH_DELAY    = 90    # pausa entre lotes (tempo para Drive sincronizar)
+DEFAULT_PAGE_DELAY = 0.8  # entre requisições de scraping/API
+DEFAULT_WORKERS    = 6    # downloads paralelos (SGB permite no máximo 6 simultâneos)
 
 HEADERS = {
     "User-Agent": (
@@ -423,23 +444,122 @@ def collect_all_links(state_filter: list[str] | None = None,
 # FASE 2 — DOWNLOAD DOS ARQUIVOS
 # ══════════════════════════════════════════════════════════════════════════════
 
-def download_files(batch_size:     int = DEFAULT_BATCH_SIZE,
-                   batch_delay:    int = DEFAULT_BATCH_DELAY,
-                   download_delay: int = DEFAULT_DOWNLOAD_DELAY,
-                   state_filter:   list[str] | None = None) -> None:
+_manifest_lock = threading.Lock()
+_cancel_event  = threading.Event()
+
+
+def _download_one(record: dict, i: int, total: int, records: list,
+                  dest_dir: Path, progress: Progress) -> str:
     """
-    Fase 2: Baixa os arquivos ZIP listados no manifest para DOWNLOAD_DIR.
-    - Pula arquivos já existentes no disco (status = 'ok').
-    - Salva o manifest após cada arquivo processado.
-    - Pausa entre lotes para dar tempo ao Google Drive de sincronizar.
+    Baixa um único arquivo com barra de progresso individual.
+    Retorna 'skip', 'ok', 'error' ou 'cancelled'.
+    Interrompível via _cancel_event (Ctrl+C no processo principal).
+    """
+    filename = record["filename"]
+    url      = record["url_download"]
+    dest     = dest_dir / filename
+    label    = f"{record['nm_municipio']} ({record['cd_estado']})"
+
+    # ── Arquivo já existe no disco? (inclui downloads manuais) ────────────────
+    if dest.exists():
+        size_mb = dest.stat().st_size / 1_048_576
+        progress.console.print(
+            f"  [{i:>3}/{total}] ↷  {label} — já existe ({size_mb:.0f} MB)"
+        )
+        record["status"]        = "ok"
+        record["downloaded_at"] = (record.get("downloaded_at")
+                                   or datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        with _manifest_lock:
+            save_manifest(records)
+        return "skip"
+
+    # ── Ctrl+C foi acionado antes de iniciar este download? ───────────────────
+    if _cancel_event.is_set():
+        return "cancelled"
+
+    tmp    = dest.with_suffix(".part")
+    offset = tmp.stat().st_size if tmp.exists() else 0
+
+    task_id = progress.add_task(f"{label}", total=None, completed=offset)
+
+    try:
+        session = make_session()
+        req_headers = {"Range": f"bytes={offset}-"} if offset > 0 else {}
+        resp = session.get(url, timeout=600, stream=True, headers=req_headers)
+
+        if resp.status_code == 206:
+            # Servidor aceita range: retoma do offset
+            content_len   = int(resp.headers.get("content-length", 0)) or None
+            total_bytes   = (offset + content_len) if content_len else None
+            file_mode     = "ab"
+            if offset > 0:
+                progress.console.print(
+                    f"  [{i:>3}/{total}] ↩  {label} — retomando de {offset/1_048_576:.1f} MB"
+                )
+        else:
+            # Servidor retornou 200 (não suporta range) ou outro código
+            resp.raise_for_status()
+            total_bytes = int(resp.headers.get("content-length", 0)) or None
+            file_mode   = "wb"
+            offset      = 0
+            if tmp.exists():
+                tmp.unlink()
+
+        progress.update(task_id, total=total_bytes, completed=offset)
+
+        with open(tmp, file_mode) as fout:
+            for chunk in resp.iter_content(chunk_size=512 * 1024):
+                if _cancel_event.is_set():
+                    raise KeyboardInterrupt
+                if chunk:
+                    fout.write(chunk)
+                    progress.advance(task_id, len(chunk))
+
+        tmp.rename(dest)
+        size_mb = dest.stat().st_size / 1_048_576
+        progress.remove_task(task_id)
+        progress.console.print(
+            f"  [{i:>3}/{total}] ✓  {label} — {filename} ({size_mb:.1f} MB)"
+        )
+
+        record["status"]        = "ok"
+        record["downloaded_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with _manifest_lock:
+            save_manifest(records)
+        return "ok"
+
+    except KeyboardInterrupt:
+        progress.remove_task(task_id)
+        # Mantém o .part para retomar na próxima execução
+        return "cancelled"
+
+    except Exception as e:
+        progress.remove_task(task_id)
+        progress.console.print(f"  [{i:>3}/{total}] ✗  {label}: {e}")
+        record["status"] = "error"
+        # Mantém o .part — pode ser erro transitório, retoma na próxima execução
+        with _manifest_lock:
+            save_manifest(records)
+        return "error"
+
+
+def download_files(workers:      int = DEFAULT_WORKERS,
+                   state_filter: list[str] | None = None) -> None:
+    """
+    Fase 2: Baixa os arquivos ZIP do manifest em paralelo para DOWNLOAD_DIR.
+    - Mostra barra de progresso individual por download (speed + ETA).
+    - Pula arquivos já presentes no disco (inclusive downloads manuais).
+    - Cada worker usa sua própria sessão HTTP (SGB limita 500 KB/s por conexão).
+    - Salva o manifest de forma thread-safe após cada arquivo.
     - Usa arquivo .part durante o download; renomeia ao concluir.
+    - Ctrl+C termina os downloads em andamento limpos antes de sair.
     """
     if not MANIFEST_PATH.exists():
         print("[ERRO] Manifest não encontrado. Execute 'collect' primeiro.")
         sys.exit(1)
 
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    session = make_session()
+    _cancel_event.clear()
 
     with open(MANIFEST_PATH, "r", encoding="utf-8") as f:
         records = list(csv.DictReader(f))
@@ -453,86 +573,47 @@ def download_files(batch_size:     int = DEFAULT_BATCH_SIZE,
     ]
 
     total_to_dl = len(to_download)
-    print(f"\n[FASE 2] {total_to_dl} arquivos a baixar")
-    print(f"         Lotes de {batch_size} | pausa entre lotes: {batch_delay}s")
-    print(f"         Delay entre downloads: {download_delay}s")
-    print(f"         Destino: {DOWNLOAD_DIR}\n")
+    _console.print(f"\n[FASE 2] {total_to_dl} arquivos a baixar  |  {workers} workers paralelos")
+    _console.print(f"         Destino: {DOWNLOAD_DIR}\n")
 
-    downloaded_ok = 0
-    errors        = 0
+    counts: dict[str, int] = {"ok": 0, "skip": 0, "error": 0, "cancelled": 0}
 
-    for i, record in enumerate(to_download, 1):
-        filename = record["filename"]
-        url      = record["url_download"]
-        dest     = DOWNLOAD_DIR / filename
-        label    = f"{record['nm_municipio']} ({record['cd_estado']})"
+    with Progress(
+        TextColumn("{task.description:<28}"),
+        BarColumn(bar_width=35),
+        TaskProgressColumn(),
+        DownloadColumn(),
+        TransferSpeedColumn(),
+        TimeRemainingColumn(),
+        console=_console,
+    ) as progress:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(
+                    _download_one, record, i, total_to_dl, records, DOWNLOAD_DIR, progress
+                ): record
+                for i, record in enumerate(to_download, 1)
+            }
+            try:
+                for fut in concurrent.futures.as_completed(futures):
+                    result = fut.result()
+                    counts[result] = counts.get(result, 0) + 1
+            except KeyboardInterrupt:
+                _cancel_event.set()
+                progress.console.print(
+                    "\n[bold yellow][INTERROMPIDO][/bold yellow] "
+                    "Aguardando downloads em andamento finalizarem..."
+                )
 
-        # ── Já existe no disco? ──────────────────────────────────────────
-        if dest.exists():
-            size_mb = dest.stat().st_size / 1_048_576
-            print(f"  [{i:>3}/{total_to_dl}] SKIP ({size_mb:.0f} MB já existe): {filename}")
-            record["status"]        = "ok"
-            record["downloaded_at"] = record.get("downloaded_at") or \
-                                      datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            save_manifest(records)
-            continue
-
-        print(f"  [{i:>3}/{total_to_dl}] {label}")
-        print(f"           {filename}")
-
-        tmp = dest.with_suffix(".part")
-        try:
-            resp = session.get(url, timeout=600, stream=True)
-            resp.raise_for_status()
-
-            total_bytes = int(resp.headers.get("content-length", 0))
-            received    = 0
-
-            with open(tmp, "wb") as fout:
-                for chunk in resp.iter_content(chunk_size=2 * 1024 * 1024):
-                    if chunk:
-                        fout.write(chunk)
-                        received += len(chunk)
-                        if total_bytes:
-                            pct = received / total_bytes * 100
-                            print(f"\r           {pct:5.1f}%  "
-                                  f"{received/1_048_576:7.1f} / "
-                                  f"{total_bytes/1_048_576:.1f} MB ",
-                                  end="", flush=True)
-
-            tmp.rename(dest)
-            size_mb = dest.stat().st_size / 1_048_576
-            print(f"\r           ✓ {size_mb:.1f} MB salvos{' '*20}")
-
-            record["status"]        = "ok"
-            record["downloaded_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            downloaded_ok += 1
-
-        except Exception as e:
-            print(f"\r           ✗ ERRO: {e}{' '*20}")
-            record["status"] = "error"
-            errors += 1
-            if tmp.exists():
-                tmp.unlink()
-
-        save_manifest(records)
-
-        # ── Pausa ────────────────────────────────────────────────────────
-        if i < total_to_dl:
-            if i % batch_size == 0:
-                batch_num = i // batch_size
-                print(f"\n  ── Lote {batch_num} concluído. "
-                      f"Pausando {batch_delay}s para o Drive sincronizar... ──\n")
-                time.sleep(batch_delay)
-            else:
-                time.sleep(download_delay)
-
-    # ── Resumo ────────────────────────────────────────────────────────────
-    print(f"\n{'═'*60}")
-    print(f"FASE 2 CONCLUÍDA")
-    print(f"  Baixados com sucesso:  {downloaded_ok}")
-    print(f"  Erros:                 {errors}")
-    print(f"  Manifest atualizado:   {MANIFEST_PATH}")
+    interrupted = _cancel_event.is_set()
+    _console.print(f"\n{'═'*60}")
+    _console.print(f"FASE 2 {'INTERROMPIDA' if interrupted else 'CONCLUÍDA'}")
+    _console.print(f"  Baixados com sucesso:  {counts['ok']}")
+    _console.print(f"  Já existiam no disco:  {counts['skip']}")
+    _console.print(f"  Erros:                 {counts['error']}")
+    if counts["cancelled"]:
+        _console.print(f"  Cancelados (Ctrl+C):   {counts['cancelled']}")
+    _console.print(f"  Manifest atualizado:   {MANIFEST_PATH}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -602,13 +683,14 @@ def main() -> None:
         choices=["collect", "download", "all", "report"],
         help="collect|download|all|report",
     )
-    parser.add_argument("--batch-size",     type=int,   default=DEFAULT_BATCH_SIZE)
-    parser.add_argument("--batch-delay",    type=int,   default=DEFAULT_BATCH_DELAY)
-    parser.add_argument("--download-delay", type=int,   default=DEFAULT_DOWNLOAD_DELAY)
-    parser.add_argument("--page-delay",     type=float, default=DEFAULT_PAGE_DELAY)
-    parser.add_argument("--state",          type=str,   default=None,
+    parser.add_argument("--page-delay", type=float, default=DEFAULT_PAGE_DELAY,
+                        help="Segundos entre requisições de scraping/API (default: 0.8)")
+    parser.add_argument("--workers",    type=int,   default=DEFAULT_WORKERS,
+                        help=f"Downloads paralelos (default: {DEFAULT_WORKERS}). "
+                             "SGB permite no máximo 6 simultâneos.")
+    parser.add_argument("--state",     type=str,   default=None,
                         help="Siglas separadas por vírgula, ex: SP,RJ")
-    parser.add_argument("--no-resume",      action="store_true")
+    parser.add_argument("--no-resume", action="store_true")
 
     args = parser.parse_args()
     state_filter = [s.strip().upper() for s in args.state.split(",")] if args.state else None
@@ -627,9 +709,7 @@ def main() -> None:
 
     if args.phase in ("download", "all"):
         download_files(
-            batch_size=args.batch_size,
-            batch_delay=args.batch_delay,
-            download_delay=args.download_delay,
+            workers=args.workers,
             state_filter=state_filter,
         )
 
