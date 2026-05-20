@@ -1,11 +1,16 @@
 {
   "cities": [
-    {"nm_mun": "Porto Alegre",       "nm_uf": "Rio Grande do Sul"},
-    {"nm_mun": "São Paulo",          "nm_uf": "São Paulo"},
-    {"nm_mun": "Maranguape",          "nm_uf": "Ceará"},
-    {"nm_mun": "Angra dos Reis",          "nm_uf": "Rio de Janeiro"},
-    {"nm_mun": "Gaspar",          "nm_uf": "Santa Catarina"},
-    {"nm_mun": "Palmas",          "nm_uf": "Tocantins"},
-    {"nm_mun": "Dourados",          "nm_uf": "Mato Grosso do Sul"}
+    {"nm_mun": "Porto Alegre",  "nm_uf": "Rio Grande do Sul",    "group": "Escritórios WRI Brasil"},
+    {"nm_mun": "São Paulo",     "nm_uf": "São Paulo",            "group": "Escritórios WRI Brasil"},
+    {"nm_mun": "Maranguape",    "nm_uf": "Ceará",                "group": "Eixo Implementação — 2ª Fase"},
+    {"nm_mun": "Angra dos Reis","nm_uf": "Rio de Janeiro",       "group": "Eixo Implementação — 2ª Fase"},
+    {"nm_mun": "Gaspar",        "nm_uf": "Santa Catarina",       "group": "Eixo Implementação — 2ª Fase"},
+    {"nm_mun": "Palmas",        "nm_uf": "Tocantins",            "group": "Eixo Implementação — 2ª Fase"},
+    {"nm_mun": "Dourados",      "nm_uf": "Mato Grosso do Sul",   "group": "Eixo Implementação — 2ª Fase"},
+    {"nm_mun": "Cáceres",       "nm_uf": "Mato Grosso",          "group": "Eixo Implementação — 1ª Fase"},
+    {"nm_mun": "Mariana",       "nm_uf": "Minas Gerais",         "group": "Eixo Implementação — 1ª Fase"},
+    {"nm_mun": "Olinda",        "nm_uf": "Pernambuco",           "group": "Eixo Implementação — 1ª Fase"},
+    {"nm_mun": "Parauapebas",   "nm_uf": "Pará",                 "group": "Eixo Implementação — 1ª Fase"},
+    {"nm_mun": "Rio Branco",    "nm_uf": "Acre",                 "group": "Eixo Implementação — 1ª Fase"}
   ]
 }
