@@ -89,7 +89,7 @@ MANIFEST_COLS = [
 
 # ── Delays padrão (segundos) ───────────────────────────────────────────────────
 DEFAULT_PAGE_DELAY = 0.8  # entre requisições de scraping/API
-DEFAULT_WORKERS    = 6    # downloads paralelos (SGB permite no máximo 6 simultâneos)
+DEFAULT_WORKERS    = 20    # downloads paralelos (SGB permite no máximo 6 simultâneos)
 
 HEADERS = {
     "User-Agent": (
