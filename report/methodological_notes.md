@@ -1,3 +1,15 @@
+# Siglas
+
+| Sigla | Nome completo |
+| --- | --- |
+| IIC | Índice de Injustiça Climática |
+| IP | Índice de Grupos Prioritários |
+| IV | Índice de Vulnerabilidade Socioeconômica |
+| IE | Índice de Exposição a Riscos Climáticos |
+| IG | Índice de Gestão Municipal |
+
+---
+
 # Dimensão de Grupos Prioritários (IP)
 
 ## Fonte e coleta de dados
