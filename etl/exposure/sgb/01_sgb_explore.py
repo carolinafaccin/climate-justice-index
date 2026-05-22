@@ -14,11 +14,17 @@ pastas pai dentro do ZIP, o que aumenta a cobertura para ZIPs com estruturas
 não padronizadas.
 
 Outputs (em data/inputs/raw/sgb/):
-  01_sgb_inventario.csv  — um registro por shapefile por ZIP (principal, escrito incrementalmente)
-  01_sgb_revisao.csv     — apenas os registros que precisam revisão manual
-  01_sgb_excluidos.csv   — arquivos excluídos automaticamente, com categoria de exclusão
-  01_sgb_cobertura.csv   — uma linha por município: has_inundacao, has_massa, classes
+  01_sgb_inventario.csv  — um registro por shapefile por ZIP; coluna 'revisar' sinaliza o que
+                           precisa de atenção manual (filtrar por revisar != '' no Excel)
+  01_sgb_cobertura.csv   — uma linha por ZIP: status_zip, has_inundacao, has_massa, classes
   01_sgb_mapeamento.json — mapeamento classe → 0-5 (editar manualmente antes do harmonize)
+
+Coluna 'revisar' do inventário:
+  sem_classe   — tipo=inundacao/massa sem coluna de classe detectada (preencher classe_col)
+  leitura_erro — arquivo abre mas tem erro de leitura (CRC, magic number)
+  zip_erro     — ZIP corrompido ou incompleto (re-baixar com 00_sgb_scraper.py redownload)
+  zip_vazio    — ZIP sem arquivos vetoriais/raster
+  (vazio)      — nenhuma ação necessária
 
 USO:
   python 01_sgb_explore.py               # explora ZIPs ainda não processados (retoma de onde parou)
@@ -55,11 +61,9 @@ def _load_data_dir() -> Path:
 
 _DATA_DIR             = _load_data_dir()
 DOWNLOAD_DIR          = _DATA_DIR / "inputs/raw/sgb/raw_zips"
-INVENTORY_PATH = _DATA_DIR / "inputs/raw/sgb/01_sgb_inventario.csv"
-REVIEW_PATH    = _DATA_DIR / "inputs/raw/sgb/01_sgb_revisao.csv"
-EXCLUDED_PATH  = _DATA_DIR / "inputs/raw/sgb/01_sgb_excluidos.csv"
-COVERAGE_PATH  = _DATA_DIR / "inputs/raw/sgb/01_sgb_cobertura.csv"
-MAPPING_PATH   = _DATA_DIR / "inputs/raw/sgb/01_sgb_mapeamento.json"
+INVENTORY_PATH = _DATA_DIR / "inputs/raw/sgb/01_sgb_inventory.csv"
+COVERAGE_PATH  = _DATA_DIR / "inputs/raw/sgb/01_sgb_coverage.csv"
+MAPPING_PATH   = _DATA_DIR / "inputs/raw/sgb/01_sgb_mapping.json"
 MANIFEST_PATH  = _DATA_DIR / "inputs/raw/sgb/00_sgb_manifest.csv"
 
 # ── Classificação por tipo ─────────────────────────────────────────────────────
@@ -99,9 +103,12 @@ DEFAULT_MAPPING: dict[str, int] = {
 }
 
 INVENTORY_COLS = [
-    "zip_filename", "shp_path_in_zip", "tipo",
-    "n_features", "colunas", "classe_col", "unique_classes", "crs", "notes",
+    "zip_filename", "cd_estado", "nm_estado", "nm_municipio",
+    "shp_path_in_zip", "tipo",
+    "n_features", "colunas", "classe_col", "unique_classes", "crs", "notes", "revisar",
 ]
+
+_LEITURA_ERRO_KWS = ["crc", "magic", "bad", "erro", "falha", "error", "decompres"]
 
 # ZIPs menores que isso quase certamente são downloads incompletos
 MIN_ZIP_SIZE_KB = 50
@@ -366,7 +373,7 @@ def scan_zip(zip_path: Path) -> list[dict]:
     def err_record(note: str) -> list[dict]:
         return [{"zip_filename": zip_path.name, "shp_path_in_zip": "", "tipo": "erro",
                  "n_features": "", "colunas": "", "classe_col": "",
-                 "unique_classes": "", "crs": "", "notes": note}]
+                 "unique_classes": "", "crs": "", "notes": note, "revisar": "zip_erro"}]
 
     # ── Verifica tamanho antes de tentar abrir ────────────────────────────
     size_kb = zip_path.stat().st_size / 1024
@@ -391,7 +398,7 @@ def scan_zip(zip_path: Path) -> list[dict]:
             "zip_filename": zip_path.name, "shp_path_in_zip": "", "tipo": "vazio",
             "n_features": "", "colunas": "", "classe_col": "",
             "unique_classes": "", "crs": "",
-            "notes": "nenhum .shp, .gpkg ou .tif encontrado",
+            "notes": "nenhum .shp, .gpkg ou .tif encontrado", "revisar": "zip_vazio",
         }]
 
     empty_meta = {"n_features": "", "colunas": "", "classe_col": "",
@@ -403,7 +410,8 @@ def scan_zip(zip_path: Path) -> list[dict]:
         if Path(shp_path).stem.upper().endswith("_L"):
             records.append({"zip_filename": zip_path.name, "shp_path_in_zip": shp_path,
                              "tipo": "outros", **empty_meta,
-                             "notes": "geometria de linha (_L) — sem dado de suscetibilidade"})
+                             "notes": "geometria de linha (_L) — sem dado de suscetibilidade",
+                             "revisar": ""})
             continue
         tipo = classify_shp(shp_path)
         if tipo == "outros":
@@ -412,16 +420,33 @@ def scan_zip(zip_path: Path) -> list[dict]:
                     if any(kw.replace("_", "") in shp_norm for kw in SKIP_AS_OUTROS_KEYWORDS)
                     else "")
             records.append({"zip_filename": zip_path.name, "shp_path_in_zip": shp_path,
-                             "tipo": "outros", **empty_meta, "notes": note})
+                             "tipo": "outros", **empty_meta, "notes": note, "revisar": ""})
         else:
             meta = read_shp_meta(zip_path, shp_path)
+            notes_lower = meta.get("notes", "").lower()
+            if any(kw in notes_lower for kw in _LEITURA_ERRO_KWS):
+                revisar = "leitura_erro"
+            elif not meta.get("classe_col"):
+                revisar = "sem_classe"
+            else:
+                revisar = ""
             records.append({"zip_filename": zip_path.name, "shp_path_in_zip": shp_path,
-                             "tipo": tipo, **meta})
+                             "tipo": tipo, **meta, "revisar": revisar})
 
     for gpkg_path in gpkg_paths:
         for layer_path, tipo, meta in read_gpkg_meta(zip_path, gpkg_path):
+            if tipo in ("inundacao", "massa"):
+                notes_lower = meta.get("notes", "").lower()
+                if any(kw in notes_lower for kw in _LEITURA_ERRO_KWS):
+                    revisar = "leitura_erro"
+                elif not meta.get("classe_col"):
+                    revisar = "sem_classe"
+                else:
+                    revisar = ""
+            else:
+                revisar = ""
             records.append({"zip_filename": zip_path.name, "shp_path_in_zip": layer_path,
-                             "tipo": tipo, **meta})
+                             "tipo": tipo, **meta, "revisar": revisar})
 
     for tif_path in tif_paths:
         tipo = classify_shp(tif_path)
@@ -430,7 +455,7 @@ def scan_zip(zip_path: Path) -> list[dict]:
             "notes": "raster GeoTIFF (tipo=outros, não lido)",
         }
         records.append({"zip_filename": zip_path.name, "shp_path_in_zip": tif_path,
-                         "tipo": tipo, **meta})
+                         "tipo": tipo, **meta, "revisar": ""})
 
     return records
 
@@ -628,10 +653,12 @@ def print_summary(records: list[dict], zip_status: dict) -> None:
     n_sem_classe = sum(1 for s in zip_status.values() if s["sem_classe"])
 
     print(f"\n{'─'*70}")
-    print(f"  ⚠   {len(problems)} ZIP(s) PRECISAM DE REVISÃO  →  edite sgb_inventory.csv")
-    print(f"     • Coluna 'tipo': mude 'outros' para 'inundacao' ou 'massa'")
-    print(f"     • Coluna 'classe_col': preencha o nome da coluna de classe")
-    print(f"     • Detalhes completos em: sgb_review.csv")
+    print(f"  ⚠   {len(problems)} ZIP(s) PRECISAM DE REVISÃO")
+    print(f"     Filtre 01_sgb_inventario.csv onde  revisar != ''  para ver o que fazer:")
+    print(f"     • sem_classe   → preencha coluna 'classe_col'")
+    print(f"     • zip_erro     → re-baixe com: python 00_sgb_scraper.py redownload")
+    print(f"     • leitura_erro → verifique o arquivo; pode precisar ser re-baixado")
+    print(f"     Ou filtre 01_sgb_cobertura.csv onde  status_zip != ok")
     print(f"{'─'*70}")
     if n_corrupt:
         print(f"  Corrompidos (re-baixar):          {n_corrupt:>4}"
@@ -689,8 +716,8 @@ def load_existing_inventory() -> tuple[set[str], list[dict], set[str]]:
 
 
 COVERAGE_COLS = [
-    "zip_filename", "nm_municipio", "cd_estado", "cd_mun_ibge",
-    "has_inundacao", "has_massa", "n_inund_shps", "n_massa_shps",
+    "zip_filename", "cd_estado", "nm_estado", "nm_municipio", "cd_mun_ibge",
+    "status_zip", "has_inundacao", "has_massa", "n_inund_shps", "n_massa_shps",
     "inund_classes", "massa_classes", "notes",
 ]
 
@@ -708,9 +735,15 @@ def build_coverage(records: list[dict], zip_status: dict) -> list[dict]:
                 "inundacao": {"count": 0, "classes": set()},
                 "massa":     {"count": 0, "classes": set()},
                 "errors":    [],
+                "has_zip_erro":  False,
+                "has_zip_vazio": False,
             }
         t = r.get("tipo", "")
-        if t in ("inundacao", "massa"):
+        if t == "erro":
+            zip_type_info[z]["has_zip_erro"] = True
+        elif t == "vazio":
+            zip_type_info[z]["has_zip_vazio"] = True
+        elif t in ("inundacao", "massa"):
             zip_type_info[z][t]["count"] += 1
             if r.get("unique_classes"):
                 zip_type_info[z][t]["classes"].update(
@@ -722,12 +755,21 @@ def build_coverage(records: list[dict], zip_status: dict) -> list[dict]:
     rows = []
     for zip_name, info in sorted(zip_type_info.items()):
         meta = manifest.get(zip_name, {})
-        s = zip_status.get(zip_name, {})
+        if info["has_zip_erro"]:
+            status_zip = "zip_erro"
+        elif info["has_zip_vazio"]:
+            status_zip = "zip_vazio"
+        elif info["inundacao"]["count"] == 0 and info["massa"]["count"] == 0:
+            status_zip = "sem_cobertura"
+        else:
+            status_zip = "ok"
         rows.append({
             "zip_filename":  zip_name,
+            "cd_estado":     meta.get("cd_estado",    ""),
+            "nm_estado":     meta.get("nm_estado",    ""),
             "nm_municipio":  meta.get("nm_municipio", ""),
-            "cd_estado":     meta.get("cd_estado", ""),
-            "cd_mun_ibge":   meta.get("cd_mun_ibge", ""),
+            "cd_mun_ibge":   meta.get("cd_mun_ibge",  ""),
+            "status_zip":    status_zip,
             "has_inundacao": "sim" if info["inundacao"]["count"] > 0 else "não",
             "has_massa":     "sim" if info["massa"]["count"] > 0 else "não",
             "n_inund_shps":  info["inundacao"]["count"],
@@ -739,85 +781,22 @@ def build_coverage(records: list[dict], zip_status: dict) -> list[dict]:
     return rows
 
 
-EXCLUDED_COLS = ["zip_filename", "file_path", "exclusion_type", "notes"]
-
-# Tipos de exclusão:
-#   zip_corrupto — ZIP não pôde ser aberto
-#   zip_vazio    — ZIP sem arquivos vetoriais/raster
-#   linha_L      — geometria de linha topológica (_L), sem dado de suscetibilidade
-#   camada_hid   — camada hidrográfica excluída (Massa_Dagua, HID_, etc.)
-#   leitura_erro — arquivo válido mas com erro de leitura (bad CRC, bad magic, etc.)
-
-
-def build_excluded(all_records: list[dict]) -> list[dict]:
-    """Categoriza registros excluídos automaticamente do harmonize."""
-    rows = []
-    for r in all_records:
-        tipo  = r.get("tipo", "")
-        shp   = r.get("shp_path_in_zip", "")
-        notes = r.get("notes", "")
-
-        if tipo == "erro":
-            excl_type = "zip_corrupto"
-        elif tipo == "vazio":
-            excl_type = "zip_vazio"
-        elif "linha (_L)" in notes:
-            excl_type = "linha_L"
-        elif "hidrográfica" in notes:
-            excl_type = "camada_hid"
-        elif tipo in ("inundacao", "massa") and notes and any(
-            kw in notes.lower()
-            for kw in ["crc", "magic", "bad", "erro", "falha", "error", "decompres"]
-        ):
-            excl_type = "leitura_erro"
-        else:
-            continue  # não é exclusão notável
-
-        rows.append({
-            "zip_filename":   r["zip_filename"],
-            "file_path":      shp,
-            "exclusion_type": excl_type,
-            "notes":          notes,
-        })
-    return rows
-
-
 def save_derived_files(all_records: list[dict]) -> dict:
-    """Gera (ou atualiza) sgb_review.csv, sgb_excluded.csv,
-    sgb_municipality_coverage.csv e class_mapping.json."""
+    """Gera (ou atualiza) 01_sgb_cobertura.csv e 01_sgb_mapeamento.json."""
     zip_status = build_zip_status(all_records)
-
-    problem_zips = {
-        z for z, s in zip_status.items()
-        if not s["has_inundacao"] or not s["has_massa"] or s["sem_classe"] or s["errors"]
-    }
-    review_records = [r for r in all_records if r["zip_filename"] in problem_zips]
-    with open(REVIEW_PATH, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=INVENTORY_COLS, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(review_records)
-    print(f"Revisão salva:     {REVIEW_PATH}  ({len(problem_zips)} ZIPs problemáticos)")
-
-    excluded = build_excluded(all_records)
-    with open(EXCLUDED_PATH, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=EXCLUDED_COLS, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(excluded)
-    n_by_type = {}
-    for r in excluded:
-        n_by_type[r["exclusion_type"]] = n_by_type.get(r["exclusion_type"], 0) + 1
-    detail = "  ".join(f"{t}: {n}" for t, n in sorted(n_by_type.items()))
-    print(f"Excluídos salvos:  {EXCLUDED_PATH}  ({len(excluded)} registros  [{detail}])")
 
     coverage = build_coverage(all_records, zip_status)
     with open(COVERAGE_PATH, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=COVERAGE_COLS, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(coverage)
-    n_inund = sum(1 for r in coverage if r["has_inundacao"] == "sim")
-    n_massa = sum(1 for r in coverage if r["has_massa"] == "sim")
+    n_ok          = sum(1 for r in coverage if r["status_zip"] == "ok")
+    n_sem_cob     = sum(1 for r in coverage if r["status_zip"] == "sem_cobertura")
+    n_erro        = sum(1 for r in coverage if r["status_zip"] == "zip_erro")
+    n_vazio       = sum(1 for r in coverage if r["status_zip"] == "zip_vazio")
     print(f"Cobertura salva:   {COVERAGE_PATH}  "
-          f"({len(coverage)} municípios | {n_inund} inundação | {n_massa} massa)")
+          f"({len(coverage)} ZIPs | ok: {n_ok}  sem_cobertura: {n_sem_cob}"
+          f"  zip_erro: {n_erro}  zip_vazio: {n_vazio})")
 
     update_class_mapping(all_records)
 
@@ -955,6 +934,8 @@ def main() -> None:
     csv_mode   = "w" if needs_new else "a"
     write_header = needs_new
 
+    mun_index = load_manifest()  # {filename: {cd_estado, nm_estado, nm_municipio, ...}}
+
     interrupted = False
     try:
         with open(INVENTORY_PATH, csv_mode, encoding="utf-8", newline="") as csv_out:
@@ -970,6 +951,13 @@ def main() -> None:
                 print(f"  [{global_i:>3}/{n_total}]  {name:<53}", end="", flush=True)
 
                 recs = scan_zip(zip_path)
+
+                # Enriquece cada registro com metadados do município (do manifest)
+                mun = mun_index.get(zip_path.name, {})
+                for r in recs:
+                    r.setdefault("cd_estado",    mun.get("cd_estado",    ""))
+                    r.setdefault("nm_estado",    mun.get("nm_estado",    ""))
+                    r.setdefault("nm_municipio", mun.get("nm_municipio", ""))
 
                 counts: dict[str, int] = defaultdict(int)
                 for r in recs:
