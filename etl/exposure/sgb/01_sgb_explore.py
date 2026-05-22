@@ -14,10 +14,11 @@ pastas pai dentro do ZIP, o que aumenta a cobertura para ZIPs com estruturas
 não padronizadas.
 
 Outputs (em data/inputs/raw/sgb/):
-  sgb_inventory.csv            — um registro por shapefile por ZIP
-  sgb_review.csv               — apenas os registros que precisam revisão manual
-  class_mapping_template.json  — rascunho do mapeamento classe → 0-5
-  class_mapping.json           — cópia inicial do template (editar manualmente)
+  01_sgb_inventario.csv  — um registro por shapefile por ZIP (principal, escrito incrementalmente)
+  01_sgb_revisao.csv     — apenas os registros que precisam revisão manual
+  01_sgb_excluidos.csv   — arquivos excluídos automaticamente, com categoria de exclusão
+  01_sgb_cobertura.csv   — uma linha por município: has_inundacao, has_massa, classes
+  01_sgb_mapeamento.json — mapeamento classe → 0-5 (editar manualmente antes do harmonize)
 
 USO:
   python 01_sgb_explore.py               # explora ZIPs ainda não processados (retoma de onde parou)
@@ -33,7 +34,6 @@ import json
 import csv
 import zipfile
 import tempfile
-import shutil
 import sys
 import argparse
 import warnings
@@ -55,17 +55,26 @@ def _load_data_dir() -> Path:
 
 _DATA_DIR             = _load_data_dir()
 DOWNLOAD_DIR          = _DATA_DIR / "inputs/raw/sgb/raw_zips"
-INVENTORY_PATH        = _DATA_DIR / "inputs/raw/sgb/sgb_inventory.csv"
-REVIEW_PATH           = _DATA_DIR / "inputs/raw/sgb/sgb_review.csv"
-MAPPING_TEMPLATE_PATH = _DATA_DIR / "inputs/raw/sgb/class_mapping_template.json"
-MAPPING_PATH          = _DATA_DIR / "inputs/raw/sgb/class_mapping.json"
+INVENTORY_PATH = _DATA_DIR / "inputs/raw/sgb/01_sgb_inventario.csv"
+REVIEW_PATH    = _DATA_DIR / "inputs/raw/sgb/01_sgb_revisao.csv"
+EXCLUDED_PATH  = _DATA_DIR / "inputs/raw/sgb/01_sgb_excluidos.csv"
+COVERAGE_PATH  = _DATA_DIR / "inputs/raw/sgb/01_sgb_cobertura.csv"
+MAPPING_PATH   = _DATA_DIR / "inputs/raw/sgb/01_sgb_mapeamento.json"
+MANIFEST_PATH  = _DATA_DIR / "inputs/raw/sgb/00_sgb_manifest.csv"
 
 # ── Classificação por tipo ─────────────────────────────────────────────────────
 # Aplicado tanto ao nome do arquivo quanto às pastas pai dentro do ZIP
 TIPO_KEYWORDS = {
-    "inundacao": ["inundac", "inund"],
+    "inundacao": ["inundac", "inund", "inuda", "enxurr"],  # inuda = typo, enxurr = enxurrada
     "massa":     ["massa", "movimento", "desliz", "escorrega", "queda", "corrida", "fluxo"],
 }
+
+# Palavras-chave que indicam camadas NÃO são de suscetibilidade, mesmo que contenham
+# "massa" no nome (ex: corpos d'água). Têm prioridade sobre TIPO_KEYWORDS.
+SKIP_AS_OUTROS_KEYWORDS = [
+    "massadagua", "massa_dagua", "hid_massa",
+    "hidrografia", "corpos_dagua",
+]
 
 # Candidatos para coluna de classe (ordem de prioridade)
 CLASS_COL_CANDIDATES = [
@@ -94,22 +103,34 @@ INVENTORY_COLS = [
     "n_features", "colunas", "classe_col", "unique_classes", "crs", "notes",
 ]
 
+# ZIPs menores que isso quase certamente são downloads incompletos
+MIN_ZIP_SIZE_KB = 50
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CLASSIFICAÇÃO E DETECÇÃO
 # ══════════════════════════════════════════════════════════════════════════════
 
-def classify_shp(shp_path: str) -> str:
+def classify_shp(shp_path: str, layer_name: str = "") -> str:
     """
-    Classifica um SHP como 'inundacao', 'massa' ou 'outros'.
-    Verifica primeiro o nome do arquivo, depois os nomes das pastas pai
-    (do mais interno para o mais externo), para capturar estruturas como:
-      Deslizamento/Suscetibilidade_A.shp  → massa
-      Inundacao/Apt_A.shp                 → inundacao
+    Classifica um arquivo como 'inundacao', 'massa' ou 'outros'.
+    Verifica o nome do arquivo, as pastas pai (mais interno primeiro) e,
+    opcionalmente, o nome de uma camada (para arquivos GPKG com múltiplas camadas).
+    Exemplos:
+      Deslizamento/Suscetibilidade_A.shp       → massa
+      Inundacao/Apt_A.shp                       → inundacao
+      dados.gpkg  (layer_name="Inundacao_A")   → inundacao
+      base.gpkg   (layer_name="HID_Massa_Dagua_A") → outros  (camada hidrográfica)
     """
-    parts = Path(shp_path).parts  # (pasta_raiz, ..., subpasta, nome.shp)
+    parts = list(Path(shp_path).parts)
+    if layer_name:
+        parts.append(layer_name)
 
-    # Verifica do nome do arquivo às pastas mais externas
+    # Camadas não-susceptibilidade têm prioridade (ex: HID_Massa_Dagua contém "massa")
+    all_text = " ".join(parts).lower().replace("_", "")
+    if any(kw.replace("_", "") in all_text for kw in SKIP_AS_OUTROS_KEYWORDS):
+        return "outros"
+
     for part in reversed(parts):
         part_lower = part.lower()
         for tipo, keywords in TIPO_KEYWORDS.items():
@@ -131,9 +152,11 @@ def detect_class_col(columns: list[str]) -> str | None:
 # LEITURA DE METADADOS
 # ══════════════════════════════════════════════════════════════════════════════
 
+VECTOR_RASTER_EXTS = {".shp", ".gpkg", ".tif", ".tiff"}
+
 def list_zip_shp_structure(zip_path: Path) -> dict[str, list[str]]:
     """
-    Retorna {pasta_dentro_do_zip: [arquivos.shp]} para todos os SHPs do ZIP.
+    Retorna {pasta_dentro_do_zip: [arquivos]} para todos os SHPs, GPKGs e TIFs do ZIP.
     Usado para mostrar estrutura de ZIPs problemáticos.
     """
     folders: dict[str, list[str]] = {}
@@ -141,7 +164,7 @@ def list_zip_shp_structure(zip_path: Path) -> dict[str, list[str]]:
         with zipfile.ZipFile(zip_path) as zf:
             for name in zf.namelist():
                 p = Path(name)
-                if p.suffix.lower() == ".shp":
+                if p.suffix.lower() in VECTOR_RASTER_EXTS:
                     folder = str(p.parent) if str(p.parent) != "." else "(raiz)"
                     folders.setdefault(folder, []).append(p.name)
     except Exception:
@@ -207,45 +230,208 @@ def read_shp_meta(zip_path: Path, shp_zip_path: str) -> dict:
     return result
 
 
+def _read_vector_meta(gdf: gpd.GeoDataFrame) -> dict:
+    """Extrai metadados comuns de um GeoDataFrame já carregado."""
+    cols = [c for c in gdf.columns if c != "geometry"]
+    classe_col = detect_class_col(cols)
+    return {
+        "n_features":     len(gdf),
+        "colunas":        "|".join(cols),
+        "classe_col":     classe_col or "",
+        "crs":            str(gdf.crs.to_epsg()) if gdf.crs else "desconhecido",
+        "unique_classes": (
+            "|".join(sorted(str(v) for v in gdf[classe_col].dropna().unique()))
+            if classe_col else ""
+        ),
+        "notes": "" if classe_col else "coluna de classe não detectada",
+    }
+
+
+def read_gpkg_meta(zip_path: Path, gpkg_zip_path: str) -> list[tuple[str, str, dict]]:
+    """
+    Extrai GPKG do ZIP e lê metadados de cada camada.
+    Retorna lista de (shp_path_in_zip, tipo, meta_dict).
+    O shp_path_in_zip usa o formato "caminho/arquivo.gpkg::NomeCamada".
+    """
+    import fiona
+
+    empty_meta = {"n_features": "", "colunas": "", "classe_col": "",
+                  "unique_classes": "", "crs": "", "notes": ""}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        try:
+            with zipfile.ZipFile(zip_path) as zf:
+                zf.extract(gpkg_zip_path, tmp)
+
+            gpkg_files = list(tmp_path.rglob("*.gpkg"))
+            if not gpkg_files:
+                tipo = classify_shp(gpkg_zip_path)
+                return [(gpkg_zip_path, tipo,
+                         {**empty_meta, "notes": "gpkg não encontrado após extração"})]
+
+            gpkg_file = gpkg_files[0]
+
+            try:
+                layers = fiona.listlayers(str(gpkg_file))
+            except Exception as e:
+                tipo = classify_shp(gpkg_zip_path)
+                return [(gpkg_zip_path, tipo,
+                         {**empty_meta, "notes": f"erro ao listar camadas: {e}"})]
+
+            results = []
+            for layer in layers:
+                layer_path = f"{gpkg_zip_path}::{layer}"
+                # _L: geometria de linha topológica — sem dado de suscetibilidade
+                if layer.upper().endswith("_L"):
+                    results.append((layer_path, "outros",
+                                    {**empty_meta, "notes": "geometria de linha (_L) — sem dado de suscetibilidade"}))
+                    continue
+                tipo = classify_shp(gpkg_zip_path, layer_name=layer)
+
+                if tipo in ("inundacao", "massa"):
+                    try:
+                        with warnings.catch_warnings():
+                            warnings.filterwarnings("ignore", category=RuntimeWarning)
+                            gdf = gpd.read_file(str(gpkg_file), layer=layer)
+                        meta = _read_vector_meta(gdf)
+                    except Exception as e:
+                        meta = {**empty_meta, "notes": f"erro: {e}"}
+                else:
+                    meta = {**empty_meta}
+
+                results.append((layer_path, tipo, meta))
+
+            return results
+
+        except Exception as e:
+            tipo = classify_shp(gpkg_zip_path)
+            return [(gpkg_zip_path, tipo,
+                     {**empty_meta, "notes": f"erro ao ler gpkg: {e}"})]
+
+
+def read_tif_meta(zip_path: Path, tif_zip_path: str) -> dict:
+    """
+    Extrai TIF do ZIP e lê metadados básicos (CRS, dimensões, valores únicos se possível).
+    Requer rasterio; se não estiver instalado, registra o arquivo sem metadados.
+    """
+    meta = {"n_features": "raster", "colunas": "", "classe_col": "",
+            "unique_classes": "", "crs": "", "notes": ""}
+
+    try:
+        import rasterio
+    except ImportError:
+        meta["notes"] = "raster GeoTIFF — instale rasterio para metadados completos"
+        return meta
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        try:
+            with zipfile.ZipFile(zip_path) as zf:
+                zf.extract(tif_zip_path, tmp)
+
+            tif_files = list(tmp_path.rglob("*.tif")) + list(tmp_path.rglob("*.tiff"))
+            if not tif_files:
+                meta["notes"] = "tif não encontrado após extração"
+                return meta
+
+            with rasterio.open(tif_files[0]) as src:
+                epsg = src.crs.to_epsg() if src.crs else None
+                meta["crs"]     = str(epsg) if epsg else "desconhecido"
+                meta["colunas"] = (f"{src.count} banda(s) | "
+                                   f"{src.width}×{src.height}px | {src.dtypes[0]}")
+                # Tenta ler valores únicos se o raster for pequeno o suficiente
+                if src.count == 1 and src.width * src.height < 5_000_000:
+                    try:
+                        data = src.read(1, masked=True)
+                        unique_vals = sorted({int(v) for v in data.compressed()})
+                        meta["unique_classes"] = "|".join(str(v) for v in unique_vals[:30])
+                    except Exception:
+                        pass
+                meta["notes"] = f"raster {src.width}×{src.height}px"
+
+        except Exception as e:
+            meta["notes"] = f"erro ao ler tif: {e}"
+
+    return meta
+
+
 def scan_zip(zip_path: Path) -> list[dict]:
     """
-    Lista todos os SHPs de um ZIP. Lê metadados completos apenas para os
-    SHPs classificados como 'inundacao' ou 'massa' — os 'outros' são registrados
-    só pelo caminho, sem abrir com geopandas, para evitar warnings e economizar tempo.
+    Lista todos os SHPs, GPKGs e TIFs de um ZIP.
+    Lê metadados completos apenas para arquivos classificados como 'inundacao'
+    ou 'massa' — os 'outros' são registrados só pelo caminho.
+    ZIPs corrompidos ou incompletos retornam um registro com tipo='erro'.
     """
+    def err_record(note: str) -> list[dict]:
+        return [{"zip_filename": zip_path.name, "shp_path_in_zip": "", "tipo": "erro",
+                 "n_features": "", "colunas": "", "classe_col": "",
+                 "unique_classes": "", "crs": "", "notes": note}]
+
+    # ── Verifica tamanho antes de tentar abrir ────────────────────────────
+    size_kb = zip_path.stat().st_size / 1024
+    if size_kb < MIN_ZIP_SIZE_KB:
+        return err_record(f"arquivo suspeito: {size_kb:.0f} KB — download incompleto?")
+
     try:
         with zipfile.ZipFile(zip_path) as zf:
-            shp_paths = [n for n in zf.namelist() if n.lower().endswith(".shp")]
+            all_names = zf.namelist()
+    except zipfile.BadZipFile as e:
+        return err_record(f"ZIP corrompido: {e}")
     except Exception as e:
-        return [{
-            "zip_filename": zip_path.name, "shp_path_in_zip": "", "tipo": "",
-            "n_features": "", "colunas": "", "classe_col": "",
-            "unique_classes": "", "crs": "", "notes": f"erro ao abrir ZIP: {e}",
-        }]
+        return err_record(f"erro ao abrir ZIP: {e}")
 
-    if not shp_paths:
+    shp_paths  = [n for n in all_names if n.lower().endswith(".shp")]
+    gpkg_paths = [n for n in all_names if n.lower().endswith(".gpkg")]
+    tif_paths  = [n for n in all_names
+                  if n.lower().endswith(".tif") or n.lower().endswith(".tiff")]
+
+    if not shp_paths and not gpkg_paths and not tif_paths:
         return [{
             "zip_filename": zip_path.name, "shp_path_in_zip": "", "tipo": "vazio",
             "n_features": "", "colunas": "", "classe_col": "",
-            "unique_classes": "", "crs": "", "notes": "nenhum .shp encontrado",
+            "unique_classes": "", "crs": "",
+            "notes": "nenhum .shp, .gpkg ou .tif encontrado",
         }]
 
+    empty_meta = {"n_features": "", "colunas": "", "classe_col": "",
+                  "unique_classes": "", "crs": "", "notes": ""}
     records = []
+
     for shp_path in shp_paths:
+        # _L: geometria de linha topológica — sem dado de suscetibilidade, ignorar
+        if Path(shp_path).stem.upper().endswith("_L"):
+            records.append({"zip_filename": zip_path.name, "shp_path_in_zip": shp_path,
+                             "tipo": "outros", **empty_meta,
+                             "notes": "geometria de linha (_L) — sem dado de suscetibilidade"})
+            continue
         tipo = classify_shp(shp_path)
-        if tipo in ("inundacao", "massa"):
-            meta = read_shp_meta(zip_path, shp_path)
+        if tipo == "outros":
+            shp_norm = shp_path.lower().replace("_", "")
+            note = ("camada hidrográfica — excluída da suscetibilidade"
+                    if any(kw.replace("_", "") in shp_norm for kw in SKIP_AS_OUTROS_KEYWORDS)
+                    else "")
+            records.append({"zip_filename": zip_path.name, "shp_path_in_zip": shp_path,
+                             "tipo": "outros", **empty_meta, "notes": note})
         else:
-            meta = {
-                "n_features": "", "colunas": "", "classe_col": "",
-                "unique_classes": "", "crs": "", "notes": "",
-            }
-        records.append({
-            "zip_filename":    zip_path.name,
-            "shp_path_in_zip": shp_path,
-            "tipo":            tipo,
-            **meta,
-        })
+            meta = read_shp_meta(zip_path, shp_path)
+            records.append({"zip_filename": zip_path.name, "shp_path_in_zip": shp_path,
+                             "tipo": tipo, **meta})
+
+    for gpkg_path in gpkg_paths:
+        for layer_path, tipo, meta in read_gpkg_meta(zip_path, gpkg_path):
+            records.append({"zip_filename": zip_path.name, "shp_path_in_zip": layer_path,
+                             "tipo": tipo, **meta})
+
+    for tif_path in tif_paths:
+        tipo = classify_shp(tif_path)
+        meta = read_tif_meta(zip_path, tif_path) if tipo in ("inundacao", "massa") else {
+            **empty_meta, "n_features": "raster",
+            "notes": "raster GeoTIFF (tipo=outros, não lido)",
+        }
+        records.append({"zip_filename": zip_path.name, "shp_path_in_zip": tif_path,
+                         "tipo": tipo, **meta})
+
     return records
 
 
@@ -278,42 +464,84 @@ def build_zip_status(records: list[dict]) -> dict[str, dict]:
         shp  = r.get("shp_path_in_zip", "")
         note = r.get("notes", "")
 
-        if tipo == "inundacao":
+        if tipo == "erro":
+            s["errors"].append((shp, note))
+        elif tipo == "inundacao":
             s["has_inundacao"] = True
+            if note and ("erro" in note.lower() or "falha" in note.lower()):
+                s["errors"].append((shp, note))
+            elif not r.get("classe_col"):
+                s["sem_classe"].append((shp, tipo))
         elif tipo == "massa":
             s["has_massa"] = True
+            if note and ("erro" in note.lower() or "falha" in note.lower()):
+                s["errors"].append((shp, note))
+            elif not r.get("classe_col"):
+                s["sem_classe"].append((shp, tipo))
         elif tipo == "outros" and shp:
             s["outros"].append(shp)
-
-        if note and ("erro" in note.lower() or "falha" in note.lower()):
-            s["errors"].append((shp, note))
-        elif not r.get("classe_col") and tipo in ("inundacao", "massa"):
-            s["sem_classe"].append((shp, tipo))
 
     return status
 
 
-def build_mapping_template(records: list[dict]) -> dict:
-    """Constrói rascunho de class_mapping.json a partir de todos os valores únicos."""
+def update_class_mapping(records: list[dict]) -> None:
+    """
+    Atualiza class_mapping.json com classes encontradas nos dados.
+    - Adiciona novas chaves com -1 (ou valor do DEFAULT_MAPPING se conhecido)
+    - Nunca sobrescreve valores que o usuário já preencheu
+    - Normaliza null → -1 (caso o usuário tenha usado null no JSON)
+    Salva direto em MAPPING_PATH — não há arquivo template separado.
+    """
+    # Coleta todas as classes únicas dos registros
     all_classes: set[str] = set()
     for r in records:
         if r.get("unique_classes"):
             all_classes.update(v.strip() for v in r["unique_classes"].split("|") if v.strip())
 
-    mapping = {cls: DEFAULT_MAPPING.get(cls, -1) for cls in sorted(all_classes)}
+    # Carrega mapeamento existente (se houver)
+    existing_mapping: dict[str, int] = {}
+    if MAPPING_PATH.exists():
+        try:
+            with open(MAPPING_PATH, encoding="utf-8") as f:
+                data = json.load(f)
+            raw = data.get("mapping", data)
+            # Normaliza null → -1 (JSON null vira None em Python)
+            existing_mapping = {
+                k: (-1 if v is None else int(v))
+                for k, v in raw.items()
+                if not k.startswith("_")
+            }
+        except Exception:
+            pass
 
-    return {
+    # Adiciona chaves novas sem tocar nas existentes
+    new_classes = [c for c in sorted(all_classes) if c not in existing_mapping]
+    for cls in new_classes:
+        existing_mapping[cls] = DEFAULT_MAPPING.get(cls, -1)
+
+    merged = dict(sorted(existing_mapping.items()))
+
+    output = {
         "_instrucoes": (
             "Preencha o valor inteiro (0-5) para cada classe. "
-            "Valores -1 precisam de revisão manual. "
-            "Salve como class_mapping.json no mesmo diretório."
+            "Valores -1 são incluídos no output com classe_num=-1 (filtráveis downstream)."
         ),
         "_escala": {
             "5": "Muito Alta", "4": "Alta", "3": "Média / Moderada",
             "2": "Baixa", "1": "Muito Baixa", "0": "Sem suscetibilidade / Área urbana",
         },
-        "mapping": mapping,
+        "mapping": merged,
     }
+
+    with open(MAPPING_PATH, "w", encoding="utf-8") as f:
+        json.dump(output, f, ensure_ascii=False, indent=2)
+
+    n_new      = len(new_classes)
+    n_unmapped = sum(1 for v in merged.values() if v == -1)
+    suffix = f"  ({n_new} novas classes adicionadas)" if n_new else ""
+    print(f"Mapping atualizado: {MAPPING_PATH}{suffix}")
+    if n_unmapped:
+        print(f"                    {n_unmapped} classe(s) com valor -1 → revise antes de harmonizar")
 
 
 def print_summary(records: list[dict], zip_status: dict) -> None:
@@ -354,7 +582,34 @@ def print_summary(records: list[dict], zip_status: dict) -> None:
             suffix  = f"  ...+{len(vals)-10}" if len(vals) > 10 else ""
             print(f"               classes: {preview}{suffix}")
 
+    # ── Frequência de colunas por tipo ───────────────────────────────────────
+    col_freq: dict[str, dict[str, int]] = {"inundacao": defaultdict(int), "massa": defaultdict(int)}
+    shp_count: dict[str, int] = {"inundacao": 0, "massa": 0}
+    for r in records:
+        t = r.get("tipo", "")
+        if t not in col_freq:
+            continue
+        shp_count[t] += 1
+        for col in (r.get("colunas") or "").split("|"):
+            col = col.strip()
+            if col:
+                col_freq[t][col] += 1
+
+    print(f"\n{'─'*70}")
+    print("  COLUNAS MAIS FREQUENTES NOS SHAPEFILES")
+    for tipo in ("inundacao", "massa"):
+        n_shps = shp_count[tipo]
+        if n_shps == 0:
+            continue
+        top = sorted(col_freq[tipo].items(), key=lambda x: -x[1])[:12]
+        print(f"\n  {tipo.upper()} (em {n_shps} SHPs):")
+        for col, cnt in top:
+            pct = 100 * cnt // n_shps
+            bar = "█" * (pct // 10)
+            print(f"    {col:<20} {cnt:>4}/{n_shps}  {bar}")
+
     # ── Seção de problemas ─────────────────────────────────────────────────────
+    error_zips   = {z for z, s in zip_status.items() if s["errors"]}
     problems = {
         z: s for z, s in zip_status.items()
         if not s["has_inundacao"] or not s["has_massa"] or s["sem_classe"] or s["errors"]
@@ -365,47 +620,31 @@ def print_summary(records: list[dict], zip_status: dict) -> None:
         print(f"{'═'*70}\n")
         return
 
+    n_corrupt    = len(error_zips)
+    n_no_inund   = sum(1 for z, s in zip_status.items()
+                       if not s["has_inundacao"] and z not in error_zips)
+    n_no_massa   = sum(1 for z, s in zip_status.items()
+                       if not s["has_massa"] and z not in error_zips)
+    n_sem_classe = sum(1 for s in zip_status.values() if s["sem_classe"])
+
     print(f"\n{'─'*70}")
-    print(f"  ⚠  {len(problems)} ZIP(s) PRECISAM DE REVISÃO  →  edite sgb_inventory.csv")
+    print(f"  ⚠   {len(problems)} ZIP(s) PRECISAM DE REVISÃO  →  edite sgb_inventory.csv")
     print(f"     • Coluna 'tipo': mude 'outros' para 'inundacao' ou 'massa'")
     print(f"     • Coluna 'classe_col': preencha o nome da coluna de classe")
-    print(f"     • Detalhes também em: sgb_review.csv")
+    print(f"     • Detalhes completos em: sgb_review.csv")
     print(f"{'─'*70}")
-
-    for zip_name, s in sorted(problems.items()):
-        issues = []
-        if not s["has_inundacao"]: issues.append("sem inundação")
-        if not s["has_massa"]:     issues.append("sem massa")
-        if s["sem_classe"]:        issues.append(f"{len(s['sem_classe'])} sem coluna de classe")
-        if s["errors"]:            issues.append(f"{len(s['errors'])} erro(s)")
-
-        print(f"\n  {zip_name}")
-        print(f"  ↳ {', '.join(issues)}")
-
-        if s["outros"]:
-            print(f"    SHPs classificados como 'outros' (não identificados):")
-            for shp in s["outros"]:
-                print(f"      {Path(shp).name}  ({shp})")
-
-        if s["sem_classe"]:
-            print(f"    SHPs sem coluna de classe detectada:")
-            for shp, tipo in s["sem_classe"]:
-                print(f"      [{tipo}]  {Path(shp).name}")
-
-        if s["errors"]:
-            print(f"    Erros ao ler:")
-            for shp, note in s["errors"]:
-                name = Path(shp).name if shp else "(desconhecido)"
-                print(f"      {name}: {note}")
-
-        # Mostra estrutura de pastas do ZIP para ajudar na identificação manual
-        shp_structure = list_zip_shp_structure(DOWNLOAD_DIR / zip_name)
-        if shp_structure:
-            print(f"    Estrutura de SHPs no ZIP:")
-            for folder in sorted(shp_structure):
-                for fname in sorted(shp_structure[folder]):
-                    print(f"      {folder}/{fname}")
-
+    if n_corrupt:
+        print(f"  Corrompidos (re-baixar):          {n_corrupt:>4}"
+              f"  →  python 00_sgb_scraper.py redownload")
+    if n_no_inund:
+        print(f"  Sem inundação (valid, sem tipo):  {n_no_inund:>4}"
+              f"  →  edite coluna 'tipo' em sgb_inventory.csv")
+    if n_no_massa:
+        print(f"  Sem massa (válido, sem tipo):     {n_no_massa:>4}"
+              f"  →  edite coluna 'tipo' em sgb_inventory.csv")
+    if n_sem_classe:
+        print(f"  Sem coluna de classe detectada:   {n_sem_classe:>4}"
+              f"  →  edite coluna 'classe_col' em sgb_inventory.csv")
     print(f"\n{'═'*70}\n")
 
 
@@ -413,28 +652,139 @@ def print_summary(records: list[dict], zip_status: dict) -> None:
 # INVENTÁRIO INCREMENTAL
 # ══════════════════════════════════════════════════════════════════════════════
 
-def load_existing_inventory() -> tuple[set[str], list[dict]]:
+def load_manifest() -> dict[str, dict]:
+    """Carrega manifest do scraper (opcional) para enriquecer a cobertura com metadados."""
+    if not MANIFEST_PATH.exists():
+        return {}
+    try:
+        with open(MANIFEST_PATH, encoding="utf-8") as f:
+            return {row["filename"]: row for row in csv.DictReader(f)}
+    except Exception:
+        return {}
+
+
+def load_existing_inventory() -> tuple[set[str], list[dict], set[str]]:
     """
     Carrega o inventário existente (se houver).
-    Retorna (conjunto de ZIPs já processados, lista de todos os registros).
+    Retorna (ZIPs OK, registros OK, ZIPs com erro).
+    ZIPs com tipo='erro' são excluídos do conjunto de processados para que sejam
+    re-escaneados automaticamente após re-download, sem refazer tudo.
     """
     if not INVENTORY_PATH.exists():
-        return set(), []
-    processed: set[str] = set()
-    records: list[dict] = []
+        return set(), [], set()
+    all_records: list[dict] = []
+    errored_zips: set[str] = set()
     try:
         with open(INVENTORY_PATH, encoding="utf-8") as f:
             for row in csv.DictReader(f):
-                processed.add(row["zip_filename"])
-                records.append(row)
+                all_records.append(row)
+                if row.get("tipo") == "erro":
+                    errored_zips.add(row["zip_filename"])
     except Exception as e:
         print(f"[AVISO] Não foi possível carregar inventário existente: {e}")
-        return set(), []
-    return processed, records
+        return set(), [], set()
+    processed = {r["zip_filename"] for r in all_records if r["zip_filename"] not in errored_zips}
+    clean_records = [r for r in all_records if r["zip_filename"] not in errored_zips]
+    return processed, clean_records, errored_zips
 
 
-def save_derived_files(all_records: list[dict]) -> None:
-    """Gera (ou atualiza) sgb_review.csv, class_mapping_template.json e class_mapping.json."""
+COVERAGE_COLS = [
+    "zip_filename", "nm_municipio", "cd_estado", "cd_mun_ibge",
+    "has_inundacao", "has_massa", "n_inund_shps", "n_massa_shps",
+    "inund_classes", "massa_classes", "notes",
+]
+
+
+def build_coverage(records: list[dict], zip_status: dict) -> list[dict]:
+    """Uma linha por ZIP com cobertura de tipos e metadados do município."""
+    manifest = load_manifest()
+
+    # Conta SHPs e coleta classes por tipo para cada ZIP
+    zip_type_info: dict[str, dict] = {}
+    for r in records:
+        z = r["zip_filename"]
+        if z not in zip_type_info:
+            zip_type_info[z] = {
+                "inundacao": {"count": 0, "classes": set()},
+                "massa":     {"count": 0, "classes": set()},
+                "errors":    [],
+            }
+        t = r.get("tipo", "")
+        if t in ("inundacao", "massa"):
+            zip_type_info[z][t]["count"] += 1
+            if r.get("unique_classes"):
+                zip_type_info[z][t]["classes"].update(
+                    v.strip() for v in r["unique_classes"].split("|") if v.strip()
+                )
+        if r.get("notes") and ("erro" in r["notes"].lower() or "falha" in r["notes"].lower()):
+            zip_type_info[z]["errors"].append(r["notes"])
+
+    rows = []
+    for zip_name, info in sorted(zip_type_info.items()):
+        meta = manifest.get(zip_name, {})
+        s = zip_status.get(zip_name, {})
+        rows.append({
+            "zip_filename":  zip_name,
+            "nm_municipio":  meta.get("nm_municipio", ""),
+            "cd_estado":     meta.get("cd_estado", ""),
+            "cd_mun_ibge":   meta.get("cd_mun_ibge", ""),
+            "has_inundacao": "sim" if info["inundacao"]["count"] > 0 else "não",
+            "has_massa":     "sim" if info["massa"]["count"] > 0 else "não",
+            "n_inund_shps":  info["inundacao"]["count"],
+            "n_massa_shps":  info["massa"]["count"],
+            "inund_classes": "|".join(sorted(info["inundacao"]["classes"])),
+            "massa_classes":  "|".join(sorted(info["massa"]["classes"])),
+            "notes":         "; ".join(info["errors"]),
+        })
+    return rows
+
+
+EXCLUDED_COLS = ["zip_filename", "file_path", "exclusion_type", "notes"]
+
+# Tipos de exclusão:
+#   zip_corrupto — ZIP não pôde ser aberto
+#   zip_vazio    — ZIP sem arquivos vetoriais/raster
+#   linha_L      — geometria de linha topológica (_L), sem dado de suscetibilidade
+#   camada_hid   — camada hidrográfica excluída (Massa_Dagua, HID_, etc.)
+#   leitura_erro — arquivo válido mas com erro de leitura (bad CRC, bad magic, etc.)
+
+
+def build_excluded(all_records: list[dict]) -> list[dict]:
+    """Categoriza registros excluídos automaticamente do harmonize."""
+    rows = []
+    for r in all_records:
+        tipo  = r.get("tipo", "")
+        shp   = r.get("shp_path_in_zip", "")
+        notes = r.get("notes", "")
+
+        if tipo == "erro":
+            excl_type = "zip_corrupto"
+        elif tipo == "vazio":
+            excl_type = "zip_vazio"
+        elif "linha (_L)" in notes:
+            excl_type = "linha_L"
+        elif "hidrográfica" in notes:
+            excl_type = "camada_hid"
+        elif tipo in ("inundacao", "massa") and notes and any(
+            kw in notes.lower()
+            for kw in ["crc", "magic", "bad", "erro", "falha", "error", "decompres"]
+        ):
+            excl_type = "leitura_erro"
+        else:
+            continue  # não é exclusão notável
+
+        rows.append({
+            "zip_filename":   r["zip_filename"],
+            "file_path":      shp,
+            "exclusion_type": excl_type,
+            "notes":          notes,
+        })
+    return rows
+
+
+def save_derived_files(all_records: list[dict]) -> dict:
+    """Gera (ou atualiza) sgb_review.csv, sgb_excluded.csv,
+    sgb_municipality_coverage.csv e class_mapping.json."""
     zip_status = build_zip_status(all_records)
 
     problem_zips = {
@@ -448,17 +798,82 @@ def save_derived_files(all_records: list[dict]) -> None:
         writer.writerows(review_records)
     print(f"Revisão salva:     {REVIEW_PATH}  ({len(problem_zips)} ZIPs problemáticos)")
 
-    template = build_mapping_template(all_records)
-    with open(MAPPING_TEMPLATE_PATH, "w", encoding="utf-8") as f:
-        json.dump(template, f, ensure_ascii=False, indent=2)
-    print(f"Template salvo:    {MAPPING_TEMPLATE_PATH}")
+    excluded = build_excluded(all_records)
+    with open(EXCLUDED_PATH, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=EXCLUDED_COLS, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(excluded)
+    n_by_type = {}
+    for r in excluded:
+        n_by_type[r["exclusion_type"]] = n_by_type.get(r["exclusion_type"], 0) + 1
+    detail = "  ".join(f"{t}: {n}" for t, n in sorted(n_by_type.items()))
+    print(f"Excluídos salvos:  {EXCLUDED_PATH}  ({len(excluded)} registros  [{detail}])")
 
-    if not MAPPING_PATH.exists():
-        shutil.copy(MAPPING_TEMPLATE_PATH, MAPPING_PATH)
-        print(f"class_mapping.json criado: {MAPPING_PATH}")
-        print("→ Revise class_mapping.json antes de rodar 02_sgb_harmonize.py")
+    coverage = build_coverage(all_records, zip_status)
+    with open(COVERAGE_PATH, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=COVERAGE_COLS, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(coverage)
+    n_inund = sum(1 for r in coverage if r["has_inundacao"] == "sim")
+    n_massa = sum(1 for r in coverage if r["has_massa"] == "sim")
+    print(f"Cobertura salva:   {COVERAGE_PATH}  "
+          f"({len(coverage)} municípios | {n_inund} inundação | {n_massa} massa)")
+
+    update_class_mapping(all_records)
 
     return zip_status
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# VERIFICAÇÃO DE INTEGRIDADE
+# ══════════════════════════════════════════════════════════════════════════════
+
+def verify_zips(zips: list[Path]) -> None:
+    """
+    Verifica integridade CRC de todos os ZIPs usando zipfile.testzip().
+    Lento (lê e descomprime cada arquivo), mas detecta corrupção de dados
+    que só aparece na extração. Use com --verify-zips antes de explorar.
+    """
+    print(f"[VERIFICAÇÃO] {len(zips)} ZIPs — isso pode demorar...\n")
+    bad: list[tuple[str, str]] = []
+
+    for i, zip_path in enumerate(zips, 1):
+        size_mb = zip_path.stat().st_size / (1024 * 1024)
+        print(f"  [{i:>3}/{len(zips)}] {zip_path.name} ({size_mb:.1f} MB)", end="  ", flush=True)
+
+        size_kb = zip_path.stat().st_size / 1024
+        if size_kb < MIN_ZIP_SIZE_KB:
+            msg = f"suspeito: {size_kb:.0f} KB (download incompleto?)"
+            print(f"⚠ {msg}")
+            bad.append((zip_path.name, msg))
+            continue
+
+        try:
+            with zipfile.ZipFile(zip_path) as zf:
+                first_bad = zf.testzip()
+            if first_bad:
+                msg = f"CRC inválido em: {first_bad}"
+                print(f"✗ {msg}")
+                bad.append((zip_path.name, msg))
+            else:
+                print("✓")
+        except zipfile.BadZipFile as e:
+            msg = f"ZIP corrompido: {e}"
+            print(f"✗ {msg}")
+            bad.append((zip_path.name, msg))
+        except Exception as e:
+            msg = f"erro: {e}"
+            print(f"✗ {msg}")
+            bad.append((zip_path.name, msg))
+
+    print(f"\n{'═'*70}")
+    if bad:
+        print(f"  ✗ {len(bad)} ZIP(s) com problema — precisam ser baixados novamente:")
+        for name, note in bad:
+            print(f"      {name}: {note}")
+    else:
+        print(f"  ✓ Todos os {len(zips)} ZIPs estão íntegros.")
+    print(f"{'═'*70}\n")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -473,6 +888,8 @@ def main() -> None:
                         help="Filtra ZIPs por estado, ex: SE,BA (substring no nome do arquivo)")
     parser.add_argument("--redo", action="store_true",
                         help="Ignora inventário existente e reprocessa tudo do zero")
+    parser.add_argument("--verify-zips", action="store_true",
+                        help="Verifica integridade CRC de todos os ZIPs e sai (lento)")
     args = parser.parse_args()
 
     if not DOWNLOAD_DIR.exists():
@@ -489,21 +906,37 @@ def main() -> None:
         print("[AVISO] Nenhum ZIP encontrado. Execute 00_sgb_scraper.py download primeiro.")
         sys.exit(0)
 
+    if args.verify_zips:
+        verify_zips(zips)
+        sys.exit(0)
+
     # ── Carrega progresso anterior ────────────────────────────────────────────
     if args.redo:
         already_done: set[str] = set()
         all_records:  list[dict] = []
+        errored_zips: set[str] = set()
     else:
-        already_done, all_records = load_existing_inventory()
+        already_done, all_records, errored_zips = load_existing_inventory()
+        if errored_zips:
+            print(f"[NOTA] {len(errored_zips)} ZIP(s) com erro anterior serão re-escaneados "
+                  f"(execute 'python 00_sgb_scraper.py redownload' se ainda não baixou)")
+            # Reescreve o inventário sem os registros de erro para que o append
+            # posterior não deixe entradas obsoletas duplicadas
+            with open(INVENTORY_PATH, "w", encoding="utf-8", newline="") as _fw:
+                _w = csv.DictWriter(_fw, fieldnames=INVENTORY_COLS, extrasaction="ignore")
+                _w.writeheader()
+                _w.writerows(all_records)
 
     zips_to_process = [z for z in zips if z.name not in already_done]
 
     n_done  = sum(1 for z in zips if z.name in already_done)
     n_total = n_done + len(zips_to_process)
+    n_rescan = sum(1 for z in zips_to_process if z.name in errored_zips)
 
     if already_done and not args.redo:
-        print(f"[RETOMADA] {n_done}/{n_total} ZIPs já processados — "
-              f"{len(zips_to_process)} restantes")
+        rescan_note = f"  ({n_rescan} re-escaneados)" if n_rescan else ""
+        print(f"[RETOMADA] {n_done}/{n_total} ZIPs OK — "
+              f"{len(zips_to_process)} restantes{rescan_note}")
     else:
         print(f"[EXPLORAÇÃO] {n_total} ZIPs | destino: {INVENTORY_PATH.parent}")
 
@@ -516,8 +949,11 @@ def main() -> None:
     INVENTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     # ── Escrita incremental: abre CSV em modo append (ou write se novo/redo) ──
-    csv_mode = "w" if (args.redo or not INVENTORY_PATH.exists()) else "a"
-    write_header = csv_mode == "w"
+    # Após reescrita dos erros acima, ou se é execução nova/redo, o arquivo
+    # já está correto — usamos append para não perder o cabeçalho.
+    needs_new = args.redo or not INVENTORY_PATH.exists()
+    csv_mode   = "w" if needs_new else "a"
+    write_header = needs_new
 
     interrupted = False
     try:
@@ -528,7 +964,10 @@ def main() -> None:
 
             for i, zip_path in enumerate(zips_to_process, 1):
                 global_i = n_done + i
-                print(f"  [{global_i:>3}/{n_total}] {zip_path.name}", end="  ", flush=True)
+                name = zip_path.name
+                if len(name) > 52:
+                    name = name[:49] + "…"
+                print(f"  [{global_i:>3}/{n_total}]  {name:<53}", end="", flush=True)
 
                 recs = scan_zip(zip_path)
 
@@ -536,16 +975,20 @@ def main() -> None:
                 for r in recs:
                     counts[r["tipo"]] += 1
 
-                parts = []
-                for tipo in ("inundacao", "massa"):
-                    n = counts.get(tipo, 0)
-                    parts.append(f"{'✓' if n else '✗'}{tipo[:5]}{'×'+str(n) if n > 1 else ''}")
-                if counts.get("outros"):
-                    parts.append(f"+{counts['outros']} outros")
-                if counts.get("vazio"):
-                    parts.append("vazio")
-                warn = "  ⚠" if not counts.get("inundacao") or not counts.get("massa") else ""
-                print("  ".join(parts) + warn)
+                if counts.get("erro"):
+                    err_note = next(r["notes"] for r in recs if r["tipo"] == "erro")
+                    print(f"  ERRO  {err_note}")
+                else:
+                    parts = []
+                    for tipo in ("inundacao", "massa"):
+                        n = counts.get(tipo, 0)
+                        parts.append(f"{'✓' if n else '✗'}{tipo[:5]}{'×'+str(n) if n > 1 else ''}")
+                    if counts.get("outros"):
+                        parts.append(f"+{counts['outros']} outros")
+                    if counts.get("vazio"):
+                        parts.append("vazio")
+                    warn = "  ⚠" if not counts.get("inundacao") or not counts.get("massa") else ""
+                    print("  " + "  ".join(parts) + warn)
 
                 # Grava imediatamente e força flush para não perder em caso de Ctrl+C
                 writer.writerows(recs)
@@ -562,17 +1005,7 @@ def main() -> None:
 
     if not interrupted:
         print_summary(all_records, zip_status)
-
-        needs_review = [
-            cls for cls, val in build_mapping_template(all_records)["mapping"].items()
-            if val == -1
-        ]
-        if needs_review:
-            print(f"⚠  {len(needs_review)} classe(s) com valor -1 no mapping (revisão manual):")
-            for cls in needs_review:
-                print(f"    '{cls}'")
-        else:
-            print("✓  Todas as classes mapeadas automaticamente.")
+        # O resumo de classes com -1 já é impresso por update_class_mapping() acima
     else:
         n_processed = n_done + len([z for z in zips_to_process if z.name in
                                     {r["zip_filename"] for r in all_records}])
