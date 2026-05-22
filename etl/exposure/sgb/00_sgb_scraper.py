@@ -10,10 +10,11 @@ Os caminhos de saída (DOWNLOAD_DIR e MANIFEST_PATH) são derivados de
 data_dir em config/config.local.json — não há paths hardcoded.
 
 USO:
-  python 00_sgb_scraper.py collect    # Fase 1: raspa links e metadados
-  python 00_sgb_scraper.py download   # Fase 2: baixa arquivos do manifest
-  python 00_sgb_scraper.py all        # Ambas em sequência
-  python 00_sgb_scraper.py report     # Resumo do manifest atual
+  python 00_sgb_scraper.py collect      # Fase 1: raspa links e metadados
+  python 00_sgb_scraper.py download     # Fase 2: baixa arquivos do manifest
+  python 00_sgb_scraper.py all          # Ambas em sequência
+  python 00_sgb_scraper.py report       # Resumo do manifest atual
+  python 00_sgb_scraper.py redownload   # Re-baixa ZIPs corrompidos (via 01_sgb_inventario.csv)
 
 OPÇÕES:
   --workers N       Downloads paralelos (default: 6; SGB permite no máximo 6 simultâneos)
@@ -71,9 +72,10 @@ def _load_data_dir() -> Path:
         raise KeyError("Chave 'data_dir' não encontrada em config.local.json")
     return Path(cfg["data_dir"])
 
-_DATA_DIR     = _load_data_dir()
-DOWNLOAD_DIR  = _DATA_DIR / "inputs/raw/sgb/raw_zips"
-MANIFEST_PATH = _DATA_DIR / "inputs/raw/sgb/sgb_download_manifest.csv"
+_DATA_DIR      = _load_data_dir()
+DOWNLOAD_DIR   = _DATA_DIR / "inputs/raw/sgb/raw_zips"
+MANIFEST_PATH  = _DATA_DIR / "inputs/raw/sgb/00_sgb_manifest.csv"
+INVENTORY_PATH = _DATA_DIR / "inputs/raw/sgb/01_sgb_inventario.csv"
 
 # ── URLs base ──────────────────────────────────────────────────────────────────
 SGB_MAIN_URL = "https://www.sgb.gov.br/produtos-por-estado-cartografia-de-suscetibilidade"
@@ -89,7 +91,17 @@ MANIFEST_COLS = [
 
 # ── Delays padrão (segundos) ───────────────────────────────────────────────────
 DEFAULT_PAGE_DELAY = 0.8  # entre requisições de scraping/API
-DEFAULT_WORKERS    = 20    # downloads paralelos (SGB permite no máximo 6 simultâneos)
+DEFAULT_WORKERS    = 6     # downloads paralelos (SGB limita a 6 simultâneos)
+
+# ── Seleção do ZIP correto dentro de cada item do DSpace ──────────────────────
+# Cada item pode ter vários ZIPs (vetorial, ortofoto, MDE, base cartográfica…).
+# Preferimos o ZIP de dados vetoriais de suscetibilidade.
+_ZIP_PREFERRED = re.compile(
+    r"(^sig_|^arquivos_vetoriais_|suscet|suscept)", re.IGNORECASE
+)
+_ZIP_EXCLUDED = re.compile(
+    r"(^bc_|mde_|^imagens_|ortofoto)", re.IGNORECASE
+)
 
 HEADERS = {
     "User-Agent": (
@@ -236,6 +248,48 @@ def _extract_handle_id(rigeo_url: str) -> str | None:
     return m.group(1) if m else None
 
 
+def _select_best_zip(bitstreams: list[dict]) -> dict | None:
+    """
+    Dentre os bitstreams ZIP de uma bundle, escolhe o de dados vetoriais.
+    Prioridade:
+      1. Nome bate com padrão vetorial: sig_, arquivos_vetoriais_, suscet…
+      2. Nome não bate com padrão excluído: bc_, mde_, ortofoto…
+      3. Primeiro ZIP disponível (fallback — loga aviso)
+    Retorna None se não houver nenhum ZIP.
+    """
+    # Deduplica por nome (DSpace às vezes registra o mesmo arquivo duas vezes)
+    seen: set[str] = set()
+    zips = []
+    for bs in bitstreams:
+        name = bs.get("name", "")
+        if name.lower().endswith(".zip") and name not in seen:
+            seen.add(name)
+            zips.append(bs)
+    if not zips:
+        return None
+
+    preferred = [bs for bs in zips
+                 if _ZIP_PREFERRED.search(bs["name"]) and not _ZIP_EXCLUDED.search(bs["name"])]
+    if preferred:
+        if len(preferred) > 1:
+            names = [bs["name"] for bs in preferred]
+            print(f"\n    [AVISO] Múltiplos ZIPs vetoriais: {names} → usando {names[0]}")
+        return preferred[0]
+
+    not_excluded = [bs for bs in zips if not _ZIP_EXCLUDED.search(bs["name"])]
+    if not_excluded:
+        if len(zips) > 1:
+            all_names = [bs["name"] for bs in zips]
+            print(f"\n    [AVISO] Sem padrão vetorial claro em {all_names}"
+                  f" → usando {not_excluded[0]['name']}")
+        return not_excluded[0]
+
+    # Todos os ZIPs batem com padrão excluído — usa o primeiro com aviso
+    names = [bs["name"] for bs in zips]
+    print(f"\n    [AVISO] Apenas ZIPs não-vetoriais encontrados: {names} → usando {names[0]}")
+    return zips[0]
+
+
 def get_item_metadata_api(session: requests.Session, rigeo_url: str,
                           delay: float) -> dict:
     """
@@ -308,16 +362,13 @@ def get_item_metadata_api(session: requests.Session, rigeo_url: str,
                       .get("_embedded", {})
                       .get("bitstreams", [])
             )
-            for bs in bitstreams:
-                if bs.get("name", "").lower().endswith(".zip"):
-                    filename = bs["name"]
-                    # Prefere o link direto de content
-                    zip_url = (
-                        bs.get("_links", {}).get("content", {}).get("href", "")
-                        or f"{RIGEO_BASE}/bitstreams/{bs['uuid']}/download"
-                    )
-                    break
-            if zip_url:
+            chosen = _select_best_zip(bitstreams)
+            if chosen:
+                filename = chosen["name"]
+                zip_url  = (
+                    chosen.get("_links", {}).get("content", {}).get("href", "")
+                    or f"{RIGEO_BASE}/bitstreams/{chosen['uuid']}/download"
+                )
                 break
 
         status = "" if zip_url else "sem_dado"
@@ -400,10 +451,16 @@ def collect_all_links(state_filter: list[str] | None = None,
                 all_records.append(record)
                 continue
 
-            # Se já está no manifest e tem URL de download, pula
+            # Se já está no manifest e tem URL de download, pula —
+            # mas re-busca se o arquivo gravado for claramente não-vetorial
             if resume and rigeo_url in existing:
                 cached = existing[rigeo_url]
-                if cached.get("url_download") or cached.get("status") in ("sem_dado", "ok"):
+                cached_file = cached.get("filename", "")
+                if cached_file and _ZIP_EXCLUDED.search(cached_file):
+                    print(f"    [RE-FETCH] Arquivo errado em cache"
+                          f" ({cached_file}): {mun['nm_municipio']}")
+                    # não faz skip — cai no bloco de API abaixo
+                elif cached.get("url_download") or cached.get("status") in ("sem_dado", "ok"):
                     print(f"    [SKIP] Já coletado: {mun['nm_municipio']}")
                     all_records.append({**record, **cached})
                     continue
@@ -617,6 +674,98 @@ def download_files(workers:      int = DEFAULT_WORKERS,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# RE-DOWNLOAD DE CORROMPIDOS
+# ══════════════════════════════════════════════════════════════════════════════
+
+_MIN_ZIP_SIZE_KB = 50  # mesmo limiar do script de exploração
+
+def redownload_corrupt(workers: int = DEFAULT_WORKERS) -> None:
+    """
+    Detecta ZIPs corrompidos DIRETAMENTE em raw_zips/ (abre cada arquivo com
+    zipfile.ZipFile) e re-baixa apenas esses arquivos. Não depende do estado
+    do sgb_inventory.csv — é seguro rodar mesmo após re-executar o explore.
+
+    Fluxo recomendado:
+      python 00_sgb_scraper.py redownload   # detecta e re-baixa corrompidos
+      python 01_sgb_explore.py              # re-escaneia automaticamente
+    """
+    import zipfile as _zipfile
+
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    zip_files = sorted(DOWNLOAD_DIR.glob("*.zip"))
+    if not zip_files:
+        print("[AVISO] Nenhum ZIP em raw_zips/. Execute 'download' primeiro.")
+        return
+
+    print(f"\n[REDOWNLOAD] Verificando {len(zip_files)} ZIPs em raw_zips/...", flush=True)
+
+    corrupt_names: set[str] = set()
+    for zp in zip_files:
+        if zp.stat().st_size / 1024 < _MIN_ZIP_SIZE_KB:
+            corrupt_names.add(zp.name)
+            continue
+        try:
+            with _zipfile.ZipFile(zp) as zf:
+                zf.namelist()   # verifica estrutura central do ZIP
+        except Exception:
+            corrupt_names.add(zp.name)
+
+    if not corrupt_names:
+        print(f"  ✓ Todos os {len(zip_files)} ZIPs estão íntegros.")
+        return
+
+    print(f"  {len(corrupt_names)} ZIPs corrompidos encontrados\n")
+
+    if not MANIFEST_PATH.exists():
+        print("[ERRO] Manifest não encontrado. Execute 'collect' primeiro.")
+        sys.exit(1)
+
+    with open(MANIFEST_PATH, encoding="utf-8") as f:
+        records = list(csv.DictReader(f))
+
+    manifest_by_filename = {r["filename"]: r for r in records if r.get("filename")}
+
+    reset_count = 0
+    not_in_manifest: list[str] = []
+
+    for name in sorted(corrupt_names):
+        dest = DOWNLOAD_DIR / name
+        if dest.exists():
+            size_mb = dest.stat().st_size / 1_048_576
+            dest.unlink()
+            print(f"  ✗ Removido: {name}  ({size_mb:.1f} MB)")
+        part = dest.with_suffix(".part")
+        if part.exists():
+            part.unlink()
+
+        if name in manifest_by_filename:
+            manifest_by_filename[name]["status"] = ""
+            manifest_by_filename[name]["downloaded_at"] = ""
+            reset_count += 1
+        else:
+            not_in_manifest.append(name)
+
+    if not_in_manifest:
+        print(f"\n  [AVISO] {len(not_in_manifest)} arquivo(s) sem URL no manifest "
+              f"(não podem ser re-baixados automaticamente):")
+        for n in not_in_manifest[:10]:
+            print(f"      {n}")
+        if len(not_in_manifest) > 10:
+            print(f"      … e mais {len(not_in_manifest) - 10}")
+        print("  Execute 'collect' para re-buscar as URLs.")
+
+    if reset_count == 0:
+        print("\n  [AVISO] Nenhum dos ZIPs corrompidos tem URL no manifest.")
+        print("  Execute 'collect' para re-buscar as URLs.")
+        return
+
+    save_manifest(records)
+    print(f"\n  {reset_count} entrada(s) resetadas no manifest.")
+    print(f"  Iniciando re-download com {workers} workers...\n")
+    download_files(workers=workers)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # RELATÓRIO
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -680,8 +829,8 @@ def main() -> None:
     )
     parser.add_argument(
         "phase",
-        choices=["collect", "download", "all", "report"],
-        help="collect|download|all|report",
+        choices=["collect", "download", "all", "report", "redownload"],
+        help="collect|download|all|report|redownload",
     )
     parser.add_argument("--page-delay", type=float, default=DEFAULT_PAGE_DELAY,
                         help="Segundos entre requisições de scraping/API (default: 0.8)")
@@ -698,6 +847,10 @@ def main() -> None:
 
     if args.phase == "report":
         print_report()
+        return
+
+    if args.phase == "redownload":
+        redownload_corrupt(workers=args.workers)
         return
 
     if args.phase in ("collect", "all"):
