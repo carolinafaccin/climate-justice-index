@@ -1,6 +1,7 @@
-# SGB — Instruções de Execução
+# SGB — Como executar o pipeline
 
-Pipeline para baixar, inventariar e harmonizar a Cartografia de Suscetibilidade do SGB/CPRM.
+Pipeline para baixar, inventariar, harmonizar e usar a Cartografia de Suscetibilidade
+do SGB/CPRM para calibrar os indicadores E1 (deslizamentos) e E2 (inundações) do IIC.
 Execute os scripts **na ordem numérica**. Cada script depende dos outputs do anterior.
 
 ## Pré-requisitos
@@ -13,7 +14,7 @@ source venv/bin/activate
 # Exemplo: {"data_dir": "/Users/lina/data/climate-injustice-index/"}
 ```
 
-Dependências: `geopandas`, `fiona`, `requests`, `beautifulsoup4`, `rich`.
+Dependências: `geopandas`, `fiona`, `requests`, `beautifulsoup4`, `rich`, `h3`.
 Espaço em disco estimado: ~50–100 GB para os ~814 ZIPs do SGB.
 
 ---
@@ -44,7 +45,7 @@ python etl/exposure/sgb/00_sgb_scraper.py redownload
 
 **Opções úteis:**
 ```bash
---workers 10        # downloads paralelos (padrão: 6; SGB suporta até ~10)
+--workers 10        # downloads paralelos (padrão: 6)
 --state SP,RJ       # filtra por estado (para testes)
 --no-resume         # ignora manifest existente e recoleta tudo do zero
 ```
@@ -62,7 +63,7 @@ inundação vs massa vs outros, lê metadados (colunas, valores de classe, nº d
 gera o inventário. É incremental: Ctrl+C salva o progresso.
 
 **Outputs:**
-- `01_sgb_inventory.csv` — um registro por arquivo por ZIP, com coluna `revisar` (escrito incrementalmente)
+- `01_sgb_inventory.csv` — um registro por arquivo por ZIP, com coluna `revisar`
 - `01_sgb_coverage.csv` — uma linha por ZIP com `status_zip`, `has_inundacao`, `has_massa`
 - `01_sgb_mapping.json` — rascunho do mapeamento textual → 0-5 **(editar antes do script 02)**
 
@@ -78,9 +79,6 @@ python etl/exposure/sgb/01_sgb_explore.py --state SE,BA
 
 # Reprocessa tudo do zero (descarta inventário existente)
 python etl/exposure/sgb/01_sgb_explore.py --redo
-
-# Verificação CRC completa (lenta, detecta corrupção de dados internos)
-python etl/exposure/sgb/01_sgb_explore.py --verify-zips
 ```
 
 ### O que verificar nos outputs
@@ -177,19 +175,53 @@ python etl/exposure/sgb/03_sgb_h3_intersect.py --dry-run
 ```
 
 **Colunas principais de saída:**
-- `sgb_alta_mta_frac` — fração da área SGB mapeada em classes 4–5 (usado em 05 e 06)
+- `sgb_alta_mta_frac` — fração da área SGB mapeada em classes 4–5 (usado em 04 e 05)
 - `sgb_coverage_frac` — fração do hexágono coberta por dados SGB (filtrar `>= 0.5` para análise)
 - `sgb_max_class` — classe máxima no hexágono
 
 ---
 
-## Scripts 04–06 (a criar)
+## Script 04 — Calibração E1
 
-| Script | Objetivo |
-|---|---|
-| `04_sgb_rasterize.py` | Rasteriza para GeoTIFF 30m por estado (archival; baixa prioridade) |
-| `05_sgb_calibrate_e1.py` | Calibra threshold LHASA vs SGB massa; sweep F1 por threshold |
-| `06_sgb_validate_e2.py` | Valida flood_score vs SGB inundação; análise de falsos negativos |
+**O que faz:** Varre thresholds de `e1_des_abs` (= lhasa_high_frac) de 0.0 a 1.0 e
+compara contra a referência SGB `sgb_alta_mta_frac > 0.3`. Calcula precision/recall/F1
+por threshold e recomenda o ótimo. Também testa `lhasa_mean >= t` como variante e
+analisa F1 por macrorregião.
+
+**Pré-requisito:** parquet E1 (`br_h3_e1_deslizamentos.parquet`) + `br_h3_sgb_massa.parquet`
+
+```bash
+python etl/exposure/sgb/04_sgb_calibrate_e1.py
+
+# Ajusta thresholds de referência (padrão: sgb-ref=0.3, min-coverage=0.5)
+python etl/exposure/sgb/04_sgb_calibrate_e1.py --sgb-ref 0.2 --min-coverage 0.3
+```
+
+**O que observar no diagnóstico:**
+- Se threshold ótimo >> 0: ajustar em `e1_deslizamentos_lhasa.py`, atualizar ADR-0020
+- Se `lhasa_mean` supera `lhasa_high_frac` em F1: re-exportar `lhasa_med_high_frac` do GEE
+- Se F1 varia muito por macrorregião: avaliar threshold regional
+
+---
+
+## Script 05 — Validação E2
+
+**O que faz:** Varre thresholds de `e2_inu_abs` (flood_score), encontra o ótimo, e
+analisa os falsos negativos: onde o SGB aponta alta suscetibilidade a inundação mas
+o E2 não detecta. Reporta distribuição por macrorregião e classe SGB máxima dos FN.
+
+**Pré-requisito:** parquet E2 (`br_h3_e2_inundacoes.parquet`) + `br_h3_sgb_inundacoes.parquet`
+
+```bash
+python etl/exposure/sgb/05_sgb_validate_e2.py
+
+python etl/exposure/sgb/05_sgb_validate_e2.py --sgb-ref 0.2 --min-coverage 0.3
+```
+
+**O que observar no diagnóstico:**
+- Se threshold ótimo >> 0: ajustar em `e2_inundacoes_hand.py`, atualizar ADR-0021
+- Se FN com `flood_score=0` concentrados em certas regiões: avaliar cobertura JRC ou ampliar teto HAND no GEE
+- Ver plano.md seção "Pós-calibração" para ações concretas em cada cenário
 
 ---
 
@@ -219,11 +251,9 @@ python etl/exposure/sgb/03_sgb_h3_intersect.py --dry-run
   clean/br_h3_sgb_massa.parquet
   clean/br_h3_sgb_inundacoes.parquet
 
-05 calibrate_e1 + 06 validate_e2   (independentes entre si, requerem 03)
+04 calibrate_e1 + 05 validate_e2   (independentes entre si, requerem 03)
   ↓
   diagnósticos TXT/CSV → ajustes em e1/e2 conforme plano.md
-
-04 rasterize   (opcional, archival, não bloqueia 05/06)
 ```
 
 ---
@@ -234,12 +264,12 @@ python etl/exposure/sgb/03_sgb_h3_intersect.py --dry-run
 data/inputs/raw/sgb/
 ├── raw_zips/                        # ZIPs baixados (um por município)
 ├── harmonized/
-│   ├── 02_sgb_floods_br.gpkg    # output do 02
-│   └── 02_sgb_mass_br.gpkg         # output do 02
+│   ├── 02_sgb_floods_br.gpkg        # output do 02
+│   └── 02_sgb_mass_br.gpkg          # output do 02
 ├── 00_sgb_manifest.csv              # criado pelo 00
-├── 01_sgb_inventory.csv            # criado pelo 01 — um registro por arquivo; col. revisar
-├── 01_sgb_coverage.csv             # criado pelo 01 — status por ZIP (status_zip)
-└── 01_sgb_mapping.json           # criado pelo 01 — editar manualmente
+├── 01_sgb_inventory.csv             # criado pelo 01 — um registro por arquivo; col. revisar
+├── 01_sgb_coverage.csv              # criado pelo 01 — status por ZIP (status_zip)
+└── 01_sgb_mapping.json              # criado pelo 01 — editar manualmente
 
 data/inputs/clean/
 ├── br_h3_sgb_massa.parquet          # output do 03
