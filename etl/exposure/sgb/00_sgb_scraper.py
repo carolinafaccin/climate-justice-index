@@ -75,7 +75,7 @@ def _load_data_dir() -> Path:
 _DATA_DIR      = _load_data_dir()
 DOWNLOAD_DIR   = _DATA_DIR / "inputs/raw/sgb/raw_zips"
 MANIFEST_PATH  = _DATA_DIR / "inputs/raw/sgb/00_sgb_manifest.csv"
-INVENTORY_PATH = _DATA_DIR / "inputs/raw/sgb/01_sgb_inventario.csv"
+INVENTORY_PATH = _DATA_DIR / "inputs/raw/sgb/01_sgb_inventory.csv"
 
 # ── URLs base ──────────────────────────────────────────────────────────────────
 SGB_MAIN_URL = "https://www.sgb.gov.br/produtos-por-estado-cartografia-de-suscetibilidade"
@@ -95,13 +95,16 @@ DEFAULT_WORKERS    = 6     # downloads paralelos (SGB limita a 6 simultâneos)
 
 # ── Seleção do ZIP correto dentro de cada item do DSpace ──────────────────────
 # Cada item pode ter vários ZIPs (vetorial, ortofoto, MDE, base cartográfica…).
-# Preferimos o ZIP de dados vetoriais de suscetibilidade.
-_ZIP_PREFERRED = re.compile(
-    r"(^sig_|^arquivos_vetoriais_|suscet|suscept)", re.IGNORECASE
-)
-_ZIP_EXCLUDED = re.compile(
-    r"(^bc_|mde_|^imagens_|ortofoto)", re.IGNORECASE
-)
+# Ordem de prioridade para ZIPs de suscetibilidade:
+#   1. sig_*, suscet*, suscept*  — contêm explicitamente dados de suscetibilidade
+#   2. bc_* (base cartográfica)  — em vários municípios é onde estão os SHPs de suscetibilidade
+#   3. arquivos_vetoriais_*      — vetorial genérico; frequentemente sem suscetibilidade
+#   4. qualquer outro não-excluído
+# Excluídos: mde_ (modelo de elevação), imagens_, ortofoto (imagens)
+_ZIP_PREFERRED = re.compile(r"(^sig_|suscet|suscept)", re.IGNORECASE)
+_ZIP_EXCLUDED  = re.compile(r"(^mde_|^imagens_|ortofoto)", re.IGNORECASE)
+_ZIP_BC        = re.compile(r"^bc_",                re.IGNORECASE)
+_ZIP_VETORIAL  = re.compile(r"^arquivos_vetoriais_", re.IGNORECASE)
 
 HEADERS = {
     "User-Agent": (
@@ -250,11 +253,13 @@ def _extract_handle_id(rigeo_url: str) -> str | None:
 
 def _select_best_zip(bitstreams: list[dict]) -> dict | None:
     """
-    Dentre os bitstreams ZIP de uma bundle, escolhe o de dados vetoriais.
-    Prioridade:
-      1. Nome bate com padrão vetorial: sig_, arquivos_vetoriais_, suscet…
-      2. Nome não bate com padrão excluído: bc_, mde_, ortofoto…
-      3. Primeiro ZIP disponível (fallback — loga aviso)
+    Dentre os bitstreams ZIP de uma bundle, escolhe o de dados de suscetibilidade.
+    Prioridade (ver constantes _ZIP_* acima):
+      1. sig_*, suscet*, suscept*  — suscetibilidade explícita no nome
+      2. bc_* (base cartográfica)  — em vários municípios contém os SHPs de suscetibilidade
+      3. arquivos_vetoriais_*      — vetorial genérico, frequentemente sem suscetibilidade
+      4. qualquer outro não-excluído
+      5. último recurso: qualquer ZIP (incluindo mde_, imagens_ etc.)
     Retorna None se não houver nenhum ZIP.
     """
     # Deduplica por nome (DSpace às vezes registra o mesmo arquivo duas vezes)
@@ -273,20 +278,30 @@ def _select_best_zip(bitstreams: list[dict]) -> dict | None:
     if preferred:
         if len(preferred) > 1:
             names = [bs["name"] for bs in preferred]
-            print(f"\n    [AVISO] Múltiplos ZIPs vetoriais: {names} → usando {names[0]}")
+            print(f"\n    [AVISO] Múltiplos ZIPs de suscetibilidade: {names} → usando {names[0]}")
         return preferred[0]
 
-    not_excluded = [bs for bs in zips if not _ZIP_EXCLUDED.search(bs["name"])]
-    if not_excluded:
-        if len(zips) > 1:
-            all_names = [bs["name"] for bs in zips]
-            print(f"\n    [AVISO] Sem padrão vetorial claro em {all_names}"
-                  f" → usando {not_excluded[0]['name']}")
-        return not_excluded[0]
+    bc_zips  = [bs for bs in zips if _ZIP_BC.search(bs["name"])]
+    vet_zips = [bs for bs in zips if _ZIP_VETORIAL.search(bs["name"])]
 
-    # Todos os ZIPs batem com padrão excluído — usa o primeiro com aviso
+    if bc_zips or vet_zips:
+        if bc_zips and vet_zips:
+            all_names = [bs["name"] for bs in bc_zips + vet_zips]
+            print(f"\n    [AVISO] Sem sig_/suscet; encontrados {all_names}"
+                  f" → preferindo bc_ sobre arquivos_vetoriais_")
+            return bc_zips[0]
+        return (bc_zips or vet_zips)[0]
+
+    # Qualquer ZIP que não seja mde_, imagens_, ortofoto
+    other = [bs for bs in zips if not _ZIP_EXCLUDED.search(bs["name"])]
+    if other:
+        all_names = [bs["name"] for bs in zips]
+        print(f"\n    [AVISO] Sem padrão reconhecido em {all_names} → usando {other[0]['name']}")
+        return other[0]
+
+    # Último recurso: usa o primeiro mesmo que seja excluído
     names = [bs["name"] for bs in zips]
-    print(f"\n    [AVISO] Apenas ZIPs não-vetoriais encontrados: {names} → usando {names[0]}")
+    print(f"\n    [AVISO] Apenas ZIPs excluídos disponíveis: {names} → usando {names[0]}")
     return zips[0]
 
 
@@ -504,6 +519,55 @@ def collect_all_links(state_filter: list[str] | None = None,
 _manifest_lock = threading.Lock()
 _cancel_event  = threading.Event()
 
+# ── Detecção e tratamento da página de confirmação do Google Drive ─────────────
+
+def _resolve_gdrive_confirmation(session: requests.Session,
+                                  original_url: str,
+                                  html_resp: requests.Response) -> requests.Response:
+    """
+    O Google Drive retorna uma página HTML de aviso de vírus para arquivos grandes
+    (geralmente > 100 MB) em vez do arquivo diretamente. Esta função extrai a URL
+    de download real da página e refaz a requisição.
+
+    Padrões suportados:
+      - Link direto drive.usercontent.google.com (Google Drive moderno)
+      - Form action com inputs hidden (fallback)
+      - Parâmetro confirm= na URL original (fallback final)
+    """
+    html = html_resp.text
+
+    # Padrão 1: link direto no botão "baixar assim mesmo" (Drive moderno)
+    m = re.search(r'href="(https://drive\.usercontent\.google\.com/download[^"]+)"', html)
+    if m:
+        return session.get(m.group(1).replace("&amp;", "&"), timeout=600, stream=True)
+
+    # Padrão 2: form action com hidden inputs
+    action = re.search(r'<form[^>]+action="([^"]+)"', html)
+    if action:
+        base = action.group(1).replace("&amp;", "&")
+        hidden = re.findall(
+            r'<input[^>]+type=["\']hidden["\'][^>]+name=["\']([^"\']+)["\'][^>]+value=["\']([^"\']*)["\']',
+            html,
+        )
+        hidden += re.findall(
+            r'<input[^>]+name=["\']([^"\']+)["\'][^>]+type=["\']hidden["\'][^>]+value=["\']([^"\']*)["\']',
+            html,
+        )
+        if hidden:
+            params = "&".join(f"{k}={v}" for k, v in hidden)
+            return session.get(f"{base}?{params}", timeout=600, stream=True)
+
+    # Padrão 3: extrai token confirm= e adiciona à URL original
+    confirm = re.search(r'[?&]confirm=([0-9A-Za-z_\-]+)', html)
+    if confirm:
+        sep = "&" if "?" in original_url else "?"
+        return session.get(f"{original_url}{sep}confirm={confirm.group(1)}",
+                           timeout=600, stream=True)
+
+    # Fallback: confirm=t funciona na maioria dos casos modernos do Drive
+    sep = "&" if "?" in original_url else "?"
+    return session.get(f"{original_url}{sep}confirm=t", timeout=600, stream=True)
+
 
 def _download_one(record: dict, i: int, total: int, records: list,
                   dest_dir: Path, progress: Progress) -> str:
@@ -544,6 +608,18 @@ def _download_one(record: dict, i: int, total: int, records: list,
         req_headers = {"Range": f"bytes={offset}-"} if offset > 0 else {}
         resp = session.get(url, timeout=600, stream=True, headers=req_headers)
 
+        # Google Drive retorna HTML (página de confirmação de vírus) para arquivos > ~100 MB.
+        # Detecta pelo Content-Type e resolve antes de começar a gravar.
+        if "text/html" in resp.headers.get("content-type", ""):
+            progress.console.print(
+                f"  [{i:>3}/{total}] ↻  {label} — página de confirmação do Google Drive, resolvendo..."
+            )
+            resp = _resolve_gdrive_confirmation(session, url, resp)
+            # Descarta .part de tentativas anteriores: não dá para retomar com nova URL
+            offset = 0
+            if tmp.exists():
+                tmp.unlink()
+
         if resp.status_code == 206:
             # Servidor aceita range: retoma do offset
             content_len   = int(resp.headers.get("content-length", 0)) or None
@@ -573,6 +649,18 @@ def _download_one(record: dict, i: int, total: int, records: list,
                     progress.advance(task_id, len(chunk))
 
         tmp.rename(dest)
+
+        # Valida magic bytes: todo ZIP válido começa com b"PK".
+        # Se o conteúdo for HTML (confirmação do Drive não resolvida), detecta aqui.
+        with open(dest, "rb") as _fv:
+            magic = _fv.read(2)
+        if magic != b"PK":
+            dest.unlink()
+            raise RuntimeError(
+                f"Arquivo baixado não é ZIP válido (magic: {magic!r}). "
+                "Provável página HTML do Google Drive não resolvida."
+            )
+
         size_mb = dest.stat().st_size / 1_048_576
         progress.remove_task(task_id)
         progress.console.print(
