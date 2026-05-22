@@ -366,4 +366,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n[INTERROMPIDO] Ctrl+C — diagnóstico não salvo.")
+        sys.exit(1)

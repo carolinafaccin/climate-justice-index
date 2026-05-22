@@ -33,6 +33,7 @@ import json
 import sys
 import argparse
 import warnings
+import time
 from pathlib import Path
 
 import geopandas as gpd
@@ -266,8 +267,8 @@ def process_tipo(
     if not states:
         # Fallback: lê estados diretamente do GeoPackage (carrega geometria mas descarta imediatamente)
         print("  Inventário não encontrado — lendo estados do GeoPackage...")
-        meta_gdf = gpd.read_file(gpkg_path, layer="suscetibilidade", where="cd_estado IS NOT NULL")
-        states = sorted(meta_gdf["cd_estado"].dropna().unique())
+        meta_gdf = gpd.read_file(gpkg_path, layer="suscetibilidade", where="sigla_uf IS NOT NULL")
+        states = sorted(meta_gdf["sigla_uf"].dropna().unique())
         del meta_gdf
         if state_filter:
             states = [s for s in states if s in state_filter]
@@ -277,39 +278,55 @@ def process_tipo(
         print("  [DRY RUN] — nenhum arquivo será escrito.")
 
     parts: list[pd.DataFrame] = []
+    interrupted = False
+    last_i = 0
 
-    for i, state in enumerate(states, 1):
-        print(f"  [{i:>2}/{len(states)}] {state}", end="  ", flush=True)
+    try:
+        for i, state in enumerate(states, 1):
+            last_i = i
+            print(f"  [{i:>2}/{len(states)}] {state}", end="  ", flush=True)
 
-        # Carrega apenas o estado atual (reduz uso de memória)
-        try:
-            state_gdf = gpd.read_file(
-                gpkg_path,
-                layer="suscetibilidade",
-                where=f"cd_estado = '{state}'",
-            )
-        except Exception as e:
-            print(f"✗ erro ao carregar: {e}")
-            continue
+            # Carrega apenas o estado atual (reduz uso de memória)
+            try:
+                state_gdf = gpd.read_file(
+                    gpkg_path,
+                    layer="suscetibilidade",
+                    where=f"sigla_uf = '{state}'",
+                )
+            except Exception as e:
+                print(f"✗ erro ao carregar: {e}")
+                continue
 
-        if state_gdf.empty:
-            print("sem feições")
-            continue
+            if state_gdf.empty:
+                print("sem feições")
+                continue
 
-        n_feats = len(state_gdf)
-        print(f"{n_feats:,} feições →", end=" ", flush=True)
+            n_feats = len(state_gdf)
+            print(f"{n_feats:,} feições →", end=" ", flush=True)
 
-        result = intersect_state(state_gdf, state)
-        del state_gdf  # libera memória imediatamente
+            t0 = time.perf_counter()
+            result = intersect_state(state_gdf, state)
+            elapsed = time.perf_counter() - t0
+            del state_gdf  # libera memória imediatamente
 
-        if result.empty:
-            print("sem interseções H3")
-            continue
+            if result.empty:
+                print(f"sem interseções H3  [{elapsed:.0f}s]")
+                continue
 
-        n_cells = len(result)
-        alta_count = (result["alta_area_m2"] > 0).sum()
-        print(f"{n_cells:,} hexágonos ({alta_count:,} com classe ≥ 4)")
-        parts.append(result)
+            n_cells = len(result)
+            alta_count = (result["alta_area_m2"] > 0).sum()
+            print(f"{n_cells:,} hexágonos ({alta_count:,} com classe ≥ 4)  [{elapsed:.0f}s]")
+            parts.append(result)
+
+    except KeyboardInterrupt:
+        interrupted = True
+        n_done = last_i
+        print(f"\n[INTERROMPIDO] Ctrl+C — {n_done}/{len(states)} estado(s) processados.")
+        if parts:
+            print("  Salvando resultado parcial dos estados já processados...")
+        else:
+            print("  Nenhum estado completo — nada a salvar.")
+            return
 
     if not parts:
         print("\n  Nenhum resultado — verifique se os GeoPackages têm dados.")
@@ -320,12 +337,15 @@ def process_tipo(
     print(f"{len(final):,} hexágonos únicos")
     print(f"  sgb_alta_mta_frac > 0.3 : {(final['sgb_alta_mta_frac'] > 0.3).sum():,} hexágonos")
     print(f"  sgb_max_class >= 4      : {(final['sgb_max_class'] >= 4).sum():,} hexágonos")
+    if interrupted:
+        print(f"  [PARCIAL] {len(parts)} estado(s) de {len(states)} — rode novamente para resultado completo.")
 
     if not dry_run:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         out_path = OUTPUT_FILES[tipo]
         final.to_parquet(out_path, index=False)
-        print(f"  ✓ Salvo: {out_path}")
+        label = " (parcial)" if interrupted else ""
+        print(f"  ✓ Salvo{label}: {out_path}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
