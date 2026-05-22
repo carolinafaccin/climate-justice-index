@@ -15,9 +15,8 @@ Usar a Cartografia de Suscetibilidade do SGB/CPRM (~814 municípios) como refer�
 | `01_sgb_explore.py` | Pronto | Inventaria ZIPs: classifica SHPs, detecta colunas de classe, lê metadados; incremental | `raw_zips/` | `01_sgb_inventory.csv` (col. `revisar`), `01_sgb_coverage.csv` (col. `status_zip`), `01_sgb_mapping.json` |
 | `02_sgb_harmonize.py` | Pronto | Extrai SHPs/GPKGs/TIFs, mapeia classe → 0-5, consolida em GeoPackages nacionais | `raw_zips/` + `01_sgb_inventory.csv` + `01_sgb_mapping.json` | `02_sgb_floods_br.gpkg`, `02_sgb_mass_br.gpkg` |
 | `03_sgb_h3_intersect.py` | Pronto | Interseção exata SGB × grade H3 res9 por estado; calcula fração de área em classes 4–5 por hexágono | GeoPackages | `br_h3_sgb_massa.parquet`, `br_h3_sgb_inundacoes.parquet` |
-| `04_sgb_rasterize.py` | A criar (baixa prioridade) | Rasteriza GeoPackages para GeoTIFF 30m por estado (archival); não bloqueia 05 e 06 | GeoPackages | `sgb_massa_br_30m.tif`, `sgb_inundacoes_br_30m.tif` |
-| `05_sgb_calibrate_e1.py` | A criar | Sweep de threshold LHASA vs SGB massa; calcula precision/recall/F1 por threshold e por macrorregião | parquet E1 + `br_h3_sgb_massa.parquet` | diagnóstico TXT/CSV |
-| `06_sgb_validate_e2.py` | A criar | flood_score vs SGB inundações; análise de falsos negativos e distribuição de HAND | parquet E2 + `br_h3_sgb_inundacoes.parquet` | diagnóstico TXT/CSV |
+| `04_sgb_calibrate_e1.py` | Pronto | Sweep de threshold em e1_des_abs vs SGB massa; F1 por threshold e por macrorregião; teste secundário com lhasa_mean | parquet E1 + `br_h3_sgb_massa.parquet` + CSVs GEE | diagnóstico TXT/CSV |
+| `05_sgb_validate_e2.py` | Pronto | Sweep de threshold em e2_inu_abs vs SGB inundações; análise de falsos negativos por macrorregião e classe SGB | parquet E2 + `br_h3_sgb_inundacoes.parquet` | diagnóstico TXT/CSV |
 
 Para instruções de execução passo a passo, ver [INSTRUCOES.md](./INSTRUCOES.md).
 
@@ -72,7 +71,7 @@ Colunas de saída:
 - `sgb_coverage_frac` — fração da área do hexágono coberta por dados SGB (útil para filtrar células de borda)
 - `n_records` — número de feições SGB que intersectam o hexágono
 
-## Calibração E1 (script 05)
+## Calibração E1 (script 04)
 
 O script testa `lhasa_high_frac > t` para t de 0.0 a 1.0 em passos de 0.05 contra a referência
 SGB `sgb_alta_mta_frac > 0.3` (≥ 30% da área SGB mapeada do hexágono em classe Alta ou Muito Alta),
@@ -84,7 +83,7 @@ Diagnóstico secundário: F1 por macrorregião (N, NE, SE, S, CO) — se variar 
 
 Se `lhasa_mean >= 3` tiver performance melhor que `lhasa_high_frac >= 4`: indica que a variável `lhasa_med_high_frac` (fração com LHASA ≥ 3) deveria ser exportada do GEE (ver seção pós-calibração).
 
-## Validação E2 (script 06)
+## Validação E2 (script 05)
 
 Falso negativo = hexágono com `sgb_alta_mta_frac > 0.3` (SGB indica alta suscetibilidade a inundação)
 mas `flood_score < 0.1` (E2 não captura). Análise identifica a distribuição de `flood_score` nos
@@ -96,9 +95,9 @@ precisa ser re-executado; ajusta-se apenas `e2_inundacoes_hand.py`.
 
 ## Pós-calibração: o que muda no pipeline
 
-### E1 — Deslizamentos (script 05)
+### E1 — Deslizamentos (script 04)
 
-| Resultado do 05 | Ação | Precisa re-exportar do GEE? |
+| Resultado do 04 | Ação | Precisa re-exportar do GEE? |
 |---|---|---|
 | Threshold ótimo ≠ atual (mas variável é `lhasa_high_frac`) | Ajustar em `e1_deslizamentos_lhasa.py`; atualizar ADR-0020 | **Não** — variável já exportada |
 | `lhasa_mean >= 3` supera `lhasa_high_frac >= 4` | Editar `h3_e1_deslizamentos_lhasa_gee.js` para exportar `lhasa_med_high_frac`; re-exportar por UF; atualizar ETL e ADR-0020 | **Sim** — nova banda no GEE |
@@ -106,9 +105,9 @@ precisa ser re-executado; ajusta-se apenas `e2_inundacoes_hand.py`.
 
 Re-executar o GEE é um processo de ~2h (exportação por UF em paralelo no GEE). O ETL `e1_deslizamentos_lhasa.py` lê os CSVs exportados e regera o parquet em minutos.
 
-### E2 — Inundações (script 06)
+### E2 — Inundações (script 05)
 
-| Resultado do 06 | Ação | Precisa re-exportar do GEE? |
+| Resultado do 05 | Ação | Precisa re-exportar do GEE? |
 |---|---|---|
 | Threshold ótimo de `flood_score` ≠ 0.1 | Ajustar corte em `e2_inundacoes_hand.py`; atualizar ADR-0021 | **Não** — score já calculado no GEE |
 | Falsos negativos concentrados em HAND > 6m (teto atual) | Editar `h3_e2_inundacoes_hand_gee_v1.js` para ampliar faixa HAND; re-exportar por UF; re-rodar ETL; atualizar ADR-0021 | **Sim** |
