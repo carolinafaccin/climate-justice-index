@@ -62,11 +62,9 @@ inundação vs massa vs outros, lê metadados (colunas, valores de classe, nº d
 gera o inventário. É incremental: Ctrl+C salva o progresso.
 
 **Outputs:**
-- `01_sgb_inventario.csv` — um registro por arquivo por ZIP (escrito incrementalmente)
-- `01_sgb_revisao.csv` — ZIPs que precisam atenção manual
-- `01_sgb_excluidos.csv` — arquivos excluídos automaticamente com categoria de exclusão
-- `01_sgb_cobertura.csv` — uma linha por município com has_inundacao / has_massa
-- `01_sgb_mapeamento.json` — rascunho do mapeamento textual → 0-5 **(editar antes do script 02)**
+- `01_sgb_inventory.csv` — um registro por arquivo por ZIP, com coluna `revisar` (escrito incrementalmente)
+- `01_sgb_coverage.csv` — uma linha por ZIP com `status_zip`, `has_inundacao`, `has_massa`
+- `01_sgb_mapping.json` — rascunho do mapeamento textual → 0-5 **(editar antes do script 02)**
 
 ```bash
 # Processa ZIPs ainda não inventariados (retoma de onde parou)
@@ -87,18 +85,22 @@ python etl/exposure/sgb/01_sgb_explore.py --verify-zips
 
 ### O que verificar nos outputs
 
-**`01_sgb_revisao.csv`** — filtre por coluna para entender os problemas:
-- `tipo=outros` com nome que parece inundação/massa → mude `tipo` no inventário
-- `classe_col` vazio → preencha com o nome da coluna de classe do shapefile
-- `notes` com "erro" ou "CRC" → ZIP provavelmente corrompido, rodar `redownload`
+**`01_sgb_inventory.csv`** — filtre pela coluna `revisar != ''`:
+- `sem_classe` → preencha `classe_col` com o nome da coluna de classe do shapefile
+- `zip_erro` → ZIP corrompido, rodar `00_sgb_scraper.py redownload`
+- `leitura_erro` → arquivo com CRC ruim, verificar se precisa re-baixar o ZIP
 
-**`01_sgb_mapeamento.json`** — **obrigatório revisar antes do script 02**:
+**`01_sgb_coverage.csv`** — filtre por `status_zip`:
+- `sem_cobertura` → ZIP teve arquivos mas nenhum era inundação ou massa (pode ser legítimo)
+- `zip_erro` / `zip_vazio` → mesmos casos acima, visão por ZIP inteiro
+
+**`01_sgb_mapping.json`** — **obrigatório revisar antes do script 02**:
 - Abra o arquivo e verifique os valores `-1` na seção `"mapping"`
 - Cada `-1` significa "ainda não mapeado" — preencha com o inteiro correto (0–5)
 - Escala: `5=Muito Alta`, `4=Alta`, `3=Média/Moderada`, `2=Baixa`, `1=Muito Baixa`, `0=Sem`
 - Salve como JSON válido (sem vírgula no último item)
 
-### Como editar `01_sgb_inventario.csv` manualmente
+### Como editar `01_sgb_inventory.csv` manualmente
 
 Abra no Excel, Numbers ou Google Sheets (UTF-8). Colunas que você pode editar:
 
@@ -121,11 +123,11 @@ com as correções aplicadas.
 **O que faz:** Lê o inventário, extrai cada shapefile/GPKG/TIF do ZIP, aplica o mapeamento
 de classe, e consolida tudo em dois GeoPackages nacionais.
 
-**Pré-requisito:** `01_sgb_mapeamento.json` revisado (sem valores `-1` não intencionais).
+**Pré-requisito:** `01_sgb_mapping.json` revisado (sem valores `-1` não intencionais).
 
 **Outputs em `harmonized/`:**
-- `02_sgb_inundacoes_br.gpkg`
-- `02_sgb_massa_br.gpkg`
+- `02_sgb_floods_br.gpkg`
+- `02_sgb_mass_br.gpkg`
 
 ```bash
 # Teste sem escrever nada (recomendado na primeira vez)
@@ -143,19 +145,51 @@ python etl/exposure/sgb/02_sgb_harmonize.py --limit 10
 
 **Se aparecerem avisos de classe não mapeada:**
 1. Anote os valores listados no aviso
-2. Adicione-os em `01_sgb_mapeamento.json` com o inteiro correto
+2. Adicione-os em `01_sgb_mapping.json` com o inteiro correto
 3. Re-execute o script 02
 
 ---
 
-## Scripts 03–06 (a criar)
+## Script 03 — Interseção H3
+
+**O que faz:** Para cada GeoPackage harmonizado, intersecta os polígonos SGB com a grade H3
+res9, calculando a fração de área em classes Alta/Muito Alta (4–5) por hexágono. Processa
+um estado por vez para manter uso de memória baixo.
+
+**Pré-requisito:** `02_sgb_floods_br.gpkg` e `02_sgb_mass_br.gpkg` em `harmonized/`.
+
+**Outputs em `data/inputs/clean/`:**
+- `br_h3_sgb_massa.parquet`
+- `br_h3_sgb_inundacoes.parquet`
+
+```bash
+# Processa ambos os tipos
+python etl/exposure/sgb/03_sgb_h3_intersect.py
+
+# Testa com um estado
+python etl/exposure/sgb/03_sgb_h3_intersect.py --state SP
+
+# Só movimentos de massa
+python etl/exposure/sgb/03_sgb_h3_intersect.py --tipo massa
+
+# Simula sem escrever saída
+python etl/exposure/sgb/03_sgb_h3_intersect.py --dry-run
+```
+
+**Colunas principais de saída:**
+- `sgb_alta_mta_frac` — fração da área SGB mapeada em classes 4–5 (usado em 05 e 06)
+- `sgb_coverage_frac` — fração do hexágono coberta por dados SGB (filtrar `>= 0.5` para análise)
+- `sgb_max_class` — classe máxima no hexágono
+
+---
+
+## Scripts 04–06 (a criar)
 
 | Script | Objetivo |
 |---|---|
-| `03_sgb_h3_intersect.py` | Overlay com grade H3 res9 → parquet por hexágono |
-| `04_sgb_rasterize.py` | Rasteriza para GeoTIFF 30m (archival) |
-| `05_sgb_calibrate_e1.py` | Calibra threshold LHASA vs SGB massa |
-| `06_sgb_validate_e2.py` | Valida threshold HAND vs SGB inundação |
+| `04_sgb_rasterize.py` | Rasteriza para GeoTIFF 30m por estado (archival; baixa prioridade) |
+| `05_sgb_calibrate_e1.py` | Calibra threshold LHASA vs SGB massa; sweep F1 por threshold |
+| `06_sgb_validate_e2.py` | Valida flood_score vs SGB inundação; análise de falsos negativos |
 
 ---
 
@@ -168,21 +202,28 @@ python etl/exposure/sgb/02_sgb_harmonize.py --limit 10
 
 01 explore
   ↓
-  01_sgb_inventario.csv
-  01_sgb_revisao.csv
-  01_sgb_excluidos.csv
-  01_sgb_cobertura.csv
-  01_sgb_mapeamento.json   ← EDITAR antes de continuar
+  01_sgb_inventory.csv
+  01_sgb_coverage.csv
+  01_sgb_mapping.json   ← EDITAR antes de continuar
 
   se ZIPs com erro → 00 redownload → 01 (retoma automaticamente)
-  se classificação errada → editar 01_sgb_inventario.csv → rodar 01 novamente
+  se classificação errada → editar 01_sgb_inventory.csv → rodar 01 novamente
 
 02 harmonize --dry-run → harmonize
   ↓
-  harmonized/02_sgb_inundacoes_br.gpkg
-  harmonized/02_sgb_massa_br.gpkg
+  harmonized/02_sgb_floods_br.gpkg
+  harmonized/02_sgb_mass_br.gpkg
 
-03 h3_intersect → 04 rasterize → 05 calibrate_e1 → 06 validate_e2
+03 h3_intersect
+  ↓
+  clean/br_h3_sgb_massa.parquet
+  clean/br_h3_sgb_inundacoes.parquet
+
+05 calibrate_e1 + 06 validate_e2   (independentes entre si, requerem 03)
+  ↓
+  diagnósticos TXT/CSV → ajustes em e1/e2 conforme plano.md
+
+04 rasterize   (opcional, archival, não bloqueia 05/06)
 ```
 
 ---
@@ -193,14 +234,12 @@ python etl/exposure/sgb/02_sgb_harmonize.py --limit 10
 data/inputs/raw/sgb/
 ├── raw_zips/                        # ZIPs baixados (um por município)
 ├── harmonized/
-│   ├── 02_sgb_inundacoes_br.gpkg    # output do 02
-│   └── 02_sgb_massa_br.gpkg         # output do 02
+│   ├── 02_sgb_floods_br.gpkg    # output do 02
+│   └── 02_sgb_mass_br.gpkg         # output do 02
 ├── 00_sgb_manifest.csv              # criado pelo 00
-├── 01_sgb_inventario.csv            # criado pelo 01 (principal, incremental)
-├── 01_sgb_revisao.csv               # criado pelo 01 (ZIPs problemáticos)
-├── 01_sgb_excluidos.csv             # criado pelo 01 (exclusões categorizadas)
-├── 01_sgb_cobertura.csv             # criado pelo 01 (cobertura por município)
-└── 01_sgb_mapeamento.json           # criado pelo 01 — editar manualmente
+├── 01_sgb_inventory.csv            # criado pelo 01 — um registro por arquivo; col. revisar
+├── 01_sgb_coverage.csv             # criado pelo 01 — status por ZIP (status_zip)
+└── 01_sgb_mapping.json           # criado pelo 01 — editar manualmente
 
 data/inputs/clean/
 ├── br_h3_sgb_massa.parquet          # output do 03
