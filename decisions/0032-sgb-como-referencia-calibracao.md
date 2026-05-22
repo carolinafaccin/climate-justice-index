@@ -37,5 +37,5 @@ A cobertura parcial (~814 de ~5.570 municípios) é tratada como **amostra inten
 - ADR-0021: decisão de usar HAND+JRC para E2.
 - ADR-0028: variáveis não incluídas em IE (inclui BATER).
 - [etl/exposure/sgb/plano.md](../etl/exposure/sgb/plano.md) — detalhes da metodologia de calibração.
-- [etl/exposure/sgb/INSTRUCOES.md](../etl/exposure/sgb/INSTRUCOES.md) — como executar o pipeline.
+- [etl/exposure/sgb/README.md](../etl/exposure/sgb/README.md) — como executar o pipeline.
 - Site SGB: https://www.sgb.gov.br/produtos-por-estado-cartografia-de-suscetibilidade
