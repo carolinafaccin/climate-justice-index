@@ -7,12 +7,12 @@ de Massa (SHP, GPKG ou GeoTIFF), mapeia os valores de CLASSE para
 a escala 0-5, e consolida tudo em dois GeoPackages.
 
 Requer (executar antes):
-  - 00_sgb_scraper.py      → sgb_download_manifest.csv
-  - 01_sgb_explore.py      → sgb_inventory.csv + class_mapping.json (editar se necessário)
+  - 00_sgb_scraper.py      → 00_sgb_manifest.csv
+  - 01_sgb_explore.py      → 01_sgb_inventory.csv + 01_sgb_mapping.json (editar se necessário)
 
 Outputs (em data/inputs/raw/sgb/harmonized/):
-  02_sgb_inundacoes_br.gpkg  — Inundação de todos os municípios processados
-  02_sgb_massa_br.gpkg       — Movimento de Massa de todos os municípios processados
+  02_sgb_floods_br.gpkg  — Inundação de todos os municípios processados
+  02_sgb_mass_br.gpkg    — Movimento de Massa de todos os municípios processados
 
 Colunas de saída:
   nm_municipio, cd_estado, cd_mun_ibge   — do manifest
@@ -54,8 +54,8 @@ def _load_data_dir() -> Path:
 _DATA_DIR      = _load_data_dir()
 DOWNLOAD_DIR   = _DATA_DIR / "inputs/raw/sgb/raw_zips"
 MANIFEST_PATH  = _DATA_DIR / "inputs/raw/sgb/00_sgb_manifest.csv"
-INVENTORY_PATH = _DATA_DIR / "inputs/raw/sgb/01_sgb_inventario.csv"
-MAPPING_PATH   = _DATA_DIR / "inputs/raw/sgb/01_sgb_mapeamento.json"
+INVENTORY_PATH = _DATA_DIR / "inputs/raw/sgb/01_sgb_inventory.csv"
+MAPPING_PATH   = _DATA_DIR / "inputs/raw/sgb/01_sgb_mapping.json"
 OUTPUT_DIR     = _DATA_DIR / "inputs/raw/sgb/harmonized"
 
 TARGET_CRS = "EPSG:4674"  # SIRGAS 2000 geográfico
@@ -74,8 +74,8 @@ OUTPUT_COLS = [
 ]
 
 TIPO_TO_FILE = {
-    "inundacao": "02_sgb_inundacoes_br.gpkg",
-    "massa":     "02_sgb_massa_br.gpkg",
+    "inundacao": "02_sgb_floods_br.gpkg",
+    "massa":     "02_sgb_mass_br.gpkg",
 }
 
 
@@ -111,11 +111,16 @@ def load_mapping() -> dict[str, int]:
 
 def load_inventory() -> pd.DataFrame:
     if not INVENTORY_PATH.exists():
-        print(f"[ERRO] sgb_inventory.csv não encontrado: {INVENTORY_PATH}")
+        print(f"[ERRO] 01_sgb_inventory.csv não encontrado: {INVENTORY_PATH}")
         print("       Execute 01_sgb_explore.py primeiro.")
         sys.exit(1)
     df = pd.read_csv(INVENTORY_PATH)
-    return df[df["tipo"].isin(TIPO_TO_FILE.keys())].copy()
+    df = df[df["tipo"].isin(TIPO_TO_FILE.keys())].copy()
+    skip = df["revisar"].isin(["leitura_erro"]) if "revisar" in df.columns else pd.Series(False, index=df.index)
+    if skip.any():
+        print(f"[AVISO] {skip.sum()} arquivo(s) com revisar=leitura_erro ignorados (re-baixe os ZIPs).")
+        df = df[~skip]
+    return df
 
 
 def load_manifest() -> dict[str, dict]:
