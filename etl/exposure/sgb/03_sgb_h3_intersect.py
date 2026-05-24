@@ -32,6 +32,7 @@ USO:
 import json
 import sys
 import argparse
+import math
 import warnings
 import time
 from pathlib import Path
@@ -39,6 +40,7 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 import h3
+import shapely
 from shapely.geometry import Polygon
 
 # ── Paths via config ───────────────────────────────────────────────────────────
@@ -129,11 +131,12 @@ def get_h3_cells_for_gdf(gdf: gpd.GeoDataFrame) -> set:
 def intersect_state(
     state_gdf: gpd.GeoDataFrame,
     state_code: str,
+    chunk_size: int = 500,
 ) -> pd.DataFrame:
     """
     Para os polígonos SGB de um estado, calcula por hexágono H3 a área
-    em cada faixa de classe. Retorna DataFrame com colunas intermediárias
-    (sgb_area_m2, alta_area_m2) para agregação posterior entre estados.
+    em cada faixa de classe. Usa sjoin (R-tree) + shapely.intersection
+    vetorizado — muito mais rápido que gpd.overlay para polígonos densos.
 
     Retorna DataFrame vazio se não houver interseção.
     """
@@ -148,32 +151,67 @@ def intersect_state(
     if valid.empty:
         return pd.DataFrame()
 
-    # 1. Obtém células H3 candidatas via polyfill
-    cells = get_h3_cells_for_gdf(valid)
-    if not cells:
+    n_feats  = len(valid)
+    n_chunks = math.ceil(n_feats / chunk_size)
+    sgb_proj = valid[["classe_num", "geometry"]].to_crs(CRS_PROJ).reset_index(drop=True)
+    # Simplifica vértices antes da interseção: 20 m ≈ 11 % da aresta H3 res9 (174 m),
+    # dentro da precisão nominal do mapeamento 1:25.000. Ver ADR-0033.
+    sgb_proj.geometry = sgb_proj.geometry.simplify(20.0, preserve_topology=True)
+    sgb_proj.geometry = sgb_proj.geometry.make_valid()  # simplify pode criar topologia inválida
+    sgb_geo  = valid[["classe_num", "geometry"]].to_crs(CRS_GEO).reset_index(drop=True)
+
+    all_inter: list[pd.DataFrame] = []
+
+    for ci in range(n_chunks):
+        lo, hi     = ci * chunk_size, min((ci + 1) * chunk_size, n_feats)
+        chunk_proj = sgb_proj.iloc[lo:hi]
+        chunk_geo  = sgb_geo.iloc[lo:hi]
+
+        cells = get_h3_cells_for_gdf(chunk_geo)
+        if cells:
+            h3_chunk = cells_to_gdf(cells).to_crs(CRS_PROJ)
+
+            # sjoin: acha pares (SGB feature, H3 cell) via índice R-tree — rápido
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message=".*index_parts.*")
+                joined = gpd.sjoin(
+                    chunk_proj, h3_chunk,
+                    how="inner", predicate="intersects",
+                )
+
+            if not joined.empty:
+                # Mapeia geometria H3 para cada par
+                h3_geom_map = h3_chunk.set_index("h3_id")["geometry"]
+                # .to_numpy(object) garante array numpy puro — evita pandas
+                # interceptar o ufunc via __array_ufunc__ e causar erros GEOS
+                sgb_geoms = joined.geometry.to_numpy(dtype=object)
+                h3_geoms  = joined["h3_id"].map(h3_geom_map).to_numpy(dtype=object)
+
+                # Interseção vetorizada (shapely 2.x ufunc — sem Python loop)
+                clips = shapely.intersection(sgb_geoms, h3_geoms)
+                areas = shapely.area(clips)
+
+                rows = pd.DataFrame({
+                    "h3_id":     joined["h3_id"].values,
+                    "classe_num": joined["classe_num"].values,
+                    "area_m2":   areas,
+                })
+                rows = rows[rows["area_m2"] > 0]
+                if not rows.empty:
+                    all_inter.append(rows)
+
+        pct = hi * 100 // n_feats
+        print(
+            f"\r    lote {ci + 1}/{n_chunks} ({pct:3d}%)  {hi:,}/{n_feats:,} feições",
+            end="", flush=True,
+        )
+
+    if not all_inter:
         return pd.DataFrame()
 
-    # 2. Converte células para GeoDataFrame projetado
-    h3_gdf_proj = cells_to_gdf(cells).to_crs(CRS_PROJ)
+    inter = pd.concat(all_inter, ignore_index=True)
 
-    # 3. Projeta SGB para cálculo de área
-    sgb_proj = valid[["classe_num", "geometry"]].to_crs(CRS_PROJ)
-
-    # 4. Interseção exata
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=RuntimeWarning)
-        warnings.filterwarnings("ignore", message=".*index_parts.*")
-        inter = gpd.overlay(sgb_proj, h3_gdf_proj, how="intersection", keep_geom_type=False)
-
-    if inter.empty:
-        return pd.DataFrame()
-
-    inter["area_m2"] = inter.geometry.area
-    inter = inter[inter["area_m2"] > 0]
-    if inter.empty:
-        return pd.DataFrame()
-
-    # 5. Agrega por hexágono
+    # Agrega por hexágono
     grp       = inter.groupby("h3_id")
     total     = grp["area_m2"].sum().rename("sgb_area_m2")
     alta      = (
@@ -284,7 +322,7 @@ def process_tipo(
     try:
         for i, state in enumerate(states, 1):
             last_i = i
-            print(f"  [{i:>2}/{len(states)}] {state}", end="  ", flush=True)
+            state_prefix = f"  [{i:>2}/{len(states)}] {state}"
 
             # Carrega apenas o estado atual (reduz uso de memória)
             try:
@@ -294,28 +332,34 @@ def process_tipo(
                     where=f"sigla_uf = '{state}'",
                 )
             except Exception as e:
-                print(f"✗ erro ao carregar: {e}")
+                print(f"{state_prefix}  ✗ erro ao carregar: {e}")
                 continue
 
             if state_gdf.empty:
-                print("sem feições")
+                print(f"{state_prefix}  sem feições")
                 continue
 
             n_feats = len(state_gdf)
-            print(f"{n_feats:,} feições →", end=" ", flush=True)
+            print(f"{state_prefix}  {n_feats:,} feições", flush=True)
 
             t0 = time.perf_counter()
-            result = intersect_state(state_gdf, state)
+            try:
+                result = intersect_state(state_gdf, state)
+            except Exception as e:
+                elapsed = time.perf_counter() - t0
+                print(f"\n    ✗ erro ao calcular interseção [{elapsed:.0f}s]: {e}")
+                del state_gdf
+                continue
             elapsed = time.perf_counter() - t0
             del state_gdf  # libera memória imediatamente
 
             if result.empty:
-                print(f"sem interseções H3  [{elapsed:.0f}s]")
+                print(f"\r    sem interseções H3  [{elapsed:.0f}s]              ")
                 continue
 
             n_cells = len(result)
             alta_count = (result["alta_area_m2"] > 0).sum()
-            print(f"{n_cells:,} hexágonos ({alta_count:,} com classe ≥ 4)  [{elapsed:.0f}s]")
+            print(f"\r    {n_cells:,} hexágonos ({alta_count:,} com classe ≥ 4)  [{elapsed:.0f}s]              ")
             parts.append(result)
 
     except KeyboardInterrupt:
