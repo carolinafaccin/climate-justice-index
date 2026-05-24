@@ -788,7 +788,8 @@ def redownload_corrupt(workers: int = DEFAULT_WORKERS) -> None:
     print(f"\n[REDOWNLOAD] Verificando {len(zip_files)} ZIPs em raw_zips/...", flush=True)
 
     corrupt_names: set[str] = set()
-    for zp in zip_files:
+    for idx, zp in enumerate(zip_files, 1):
+        print(f"\r  verificando {idx}/{len(zip_files)}…", end="", flush=True)
         if zp.stat().st_size / 1024 < _MIN_ZIP_SIZE_KB:
             corrupt_names.add(zp.name)
             continue
@@ -797,6 +798,7 @@ def redownload_corrupt(workers: int = DEFAULT_WORKERS) -> None:
                 zf.namelist()   # verifica estrutura central do ZIP
         except Exception:
             corrupt_names.add(zp.name)
+    print()
 
     if not corrupt_names:
         print(f"  ✓ Todos os {len(zip_files)} ZIPs estão íntegros.")
