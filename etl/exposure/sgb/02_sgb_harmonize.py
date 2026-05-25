@@ -85,6 +85,47 @@ TIPO_TO_FILE = {
     "massa":     "02_sgb_mass_br.gpkg",
 }
 
+PROGRESS_FILE = OUTPUT_DIR / "02_progress.json"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PROGRESSO / RESUME
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _load_progress() -> dict[str, set[str]]:
+    if not PROGRESS_FILE.exists():
+        return {t: set() for t in TIPO_TO_FILE}
+    with open(PROGRESS_FILE) as f:
+        data = json.load(f)
+    return {t: set(data.get(t, [])) for t in TIPO_TO_FILE}
+
+
+def _save_progress(progress: dict[str, set[str]]) -> None:
+    with open(PROGRESS_FILE, "w") as f:
+        json.dump({t: sorted(v) for t, v in progress.items()}, f, indent=2)
+
+
+def rebuild_progress() -> dict[str, set[str]]:
+    """Reconstrói o arquivo de progresso lendo os GPKGs existentes via SQLite."""
+    import sqlite3
+    progress: dict[str, set[str]] = {t: set() for t in TIPO_TO_FILE}
+    for tipo, fname in TIPO_TO_FILE.items():
+        out_path = OUTPUT_DIR / fname
+        if not out_path.exists():
+            print(f"  {fname}: não encontrado, ignorado.")
+            continue
+        try:
+            conn = sqlite3.connect(str(out_path))
+            rows = conn.execute(
+                "SELECT DISTINCT zip_filename FROM suscetibilidade WHERE zip_filename IS NOT NULL"
+            ).fetchall()
+            conn.close()
+            progress[tipo] = {r[0] for r in rows}
+            print(f"  {fname}: {len(progress[tipo])} ZIPs já processados.")
+        except Exception as e:
+            print(f"  [ERRO] ao ler {fname}: {e}")
+    return progress
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CARREGAMENTO
@@ -428,6 +469,7 @@ def harmonize(
     state_filter: list[str] | None = None,
     limit: int | None = None,
     dry_run: bool = False,
+    resume: bool = False,
 ) -> None:
     mapping     = load_mapping()
     inventory   = load_inventory()
@@ -445,12 +487,28 @@ def harmonize(
         all_zips = all_zips[:limit]
 
     total = len(all_zips)
-    print(f"\n[HARMONIZE] {total} ZIPs | dry_run={dry_run}")
+    print(f"\n[HARMONIZE] {total} ZIPs | dry_run={dry_run} | resume={resume}")
     if not dry_run:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+    # Progresso: rastreia (tipo, zip_filename) já escritos
+    progress: dict[str, set[str]] = {t: set() for t in TIPO_TO_FILE}
+    if resume:
+        progress = _load_progress()
+        n_done = sum(len(v) for v in progress.values())
+        print(f"  [RESUME] {n_done} combinações (tipo, ZIP) já processadas — serão puladas.")
+    elif not dry_run and PROGRESS_FILE.exists():
+        PROGRESS_FILE.unlink()
+
     # Rastreia se já escrevemos cada arquivo (para alternar mode w/a)
+    # Quando resume=True, pré-popula para não sobrescrever dados existentes
     written: set[str] = set()
+    if resume and not dry_run:
+        for tipo, fname in TIPO_TO_FILE.items():
+            out_path = OUTPUT_DIR / fname
+            if out_path.exists() and progress[tipo]:
+                written.add(fname)
+
     counts = {tipo: {"ok": 0, "skip": 0, "err": 0} for tipo in TIPO_TO_FILE}
     interrupted = False
     last_i = 0
@@ -486,6 +544,11 @@ def harmonize(
                 file_in_zip    = str(row["shp_path_in_zip"])
                 # Para GPKG mostra arquivo::camada; para outros mostra só o nome do arquivo
                 display_name   = file_in_zip if "::" in file_in_zip else Path(file_in_zip).name
+
+                if resume and zip_name in progress[tipo]:
+                    counts[tipo]["skip"] += 1
+                    continue
+
                 print(f"    → {tipo}: {display_name}", end=" ", flush=True)
 
                 if dry_run:
@@ -517,6 +580,9 @@ def harmonize(
                 try:
                     gdf.to_file(out_path, driver="GPKG", layer="suscetibilidade", mode=mode)
                     written.add(out_path.name)
+                    progress[tipo].add(zip_name)
+                    if not dry_run:
+                        _save_progress(progress)
                     print(f"✓ {len(gdf)} feições")
                     counts[tipo]["ok"] += 1
                 except Exception as e:
@@ -535,7 +601,7 @@ def harmonize(
     print(status + (" (DRY RUN)" if dry_run else ""))
     for tipo, c in counts.items():
         out = OUTPUT_DIR / TIPO_TO_FILE[tipo] if not dry_run else "(não escrito)"
-        print(f"  {tipo:12}  ok: {c['ok']:4}  erros: {c['err']:4}  → {out}")
+        print(f"  {tipo:12}  ok: {c['ok']:4}  skip: {c['skip']:4}  erros: {c['err']:4}  → {out}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -553,14 +619,28 @@ def main() -> None:
                         help="Limita a N ZIPs (para teste)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Simula o processamento sem escrever arquivos")
+    parser.add_argument("--resume", action="store_true",
+                        help="Continua do ponto onde parou (lê 02_progress.json)")
+    parser.add_argument("--rebuild-progress", action="store_true",
+                        help="Reconstrói 02_progress.json lendo os GPKGs existentes, depois sai")
 
     args = parser.parse_args()
+
+    if args.rebuild_progress:
+        print("\n[REBUILD-PROGRESS] Lendo GPKGs para reconstruir progresso...")
+        prog = rebuild_progress()
+        _save_progress(prog)
+        print(f"\n  Progresso salvo em {PROGRESS_FILE}")
+        print("  Agora rode: python 02_sgb_harmonize.py --resume")
+        return
+
     state_filter = [s.strip().upper() for s in args.state.split(",")] if args.state else None
 
     harmonize(
         state_filter=state_filter,
         limit=args.limit,
         dry_run=args.dry_run,
+        resume=args.resume,
     )
 
 
