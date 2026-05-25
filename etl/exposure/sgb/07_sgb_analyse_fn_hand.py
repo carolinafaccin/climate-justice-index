@@ -43,7 +43,7 @@ def _load_data_dir() -> Path:
 
 
 _DATA_DIR    = _load_data_dir()
-DEFAULT_DIR  = _DATA_DIR / "inputs/raw/gee/fn_e2_hand_diagnostic"
+DEFAULT_DIR  = _DATA_DIR / "inputs/raw/gee/e2_fn_hand_diagnostic"
 DIAGNOSE_DIR = cfg.DIAGNOSE_DIR
 
 # Tetos candidatos a testar (em metros). O atual é 6 m.

@@ -235,6 +235,7 @@ python etl/exposure/sgb/05_sgb_calibrate_e1.py --sgb-ref 0.2 --min-coverage 0.3
 **O que faz:** Varre thresholds de `e2_inu_abs` (flood_score), encontra o ótimo, e
 analisa os falsos negativos: onde o SGB aponta alta suscetibilidade a inundação mas
 o E2 não detecta. Reporta distribuição por macrorregião e classe SGB máxima dos FN.
+Também exporta dois arquivos adicionais para investigação do teto HAND.
 
 **Pré-requisito:** parquet E2 (`br_h3_e2_inundacoes.parquet`) + `br_h3_sgb_inundacoes.parquet`
 
@@ -244,10 +245,122 @@ python etl/exposure/sgb/06_sgb_validate_e2.py
 python etl/exposure/sgb/06_sgb_validate_e2.py --sgb-ref 0.2 --min-coverage 0.3
 ```
 
+**Outputs em `cfg.DIAGNOSE_DIR`:**
+
+- `diagnostic_e2_validation_<ts>.txt` — relatório principal
+- `diagnostic_e2_validation_<ts>.csv` — sweep completo por threshold
+- `diagnostic_e2_fn_hexagons_<ts>.csv` — hexágonos falsos negativos **(insumo para o GEE)**
+
 **O que observar no diagnóstico:**
+
 - Se threshold ótimo >> 0: ajustar em `e2_inundacoes_hand.py`, atualizar ADR-0021
-- Se FN com `flood_score=0` concentrados em certas regiões: avaliar cobertura JRC ou ampliar teto HAND no GEE
-- Ver plano.md seção "Pós-calibração" para ações concretas em cada cenário
+- Se FN com `flood_score=0` concentrados em S/SE: avaliar ampliar teto HAND → continuar para GEE + 07
+- Se FN com `jrc_rp100=0` (passo 07): o problema é cobertura JRC, não o teto HAND
+
+---
+
+## Script GEE — Diagnóstico de HAND nos Falsos Negativos
+
+**Contexto:** O parquet E2 armazena apenas o `flood_score` já classificado (0/0.33/0.66/1.00),
+não o valor bruto de HAND. Para saber se o teto atual de 6 m é adequado, é preciso consultar
+o HAND original no GEE para cada hexágono falso negativo.
+
+**Arquivo:** [`etl/gee_scripts/h3_e2_fn_hand_diagnostic_gee.js`](../../../etl/gee_scripts/h3_e2_fn_hand_diagnostic_gee.js)
+
+**Fluxo:**
+
+1. Rodar o script 06 → gera `diagnostic_e2_fn_hexagons_<ts>.csv`
+   (o CSV inclui colunas `latitude` e `longitude` — centróides dos hexágonos H3)
+
+2. Fazer upload do CSV no GEE como asset:
+   - GEE Code Editor → Assets → **New → CSV upload**
+   - Em *Advanced options*: **X column = `longitude`**, **Y column = `latitude`**
+   - Isso cria uma FeatureCollection de pontos, uma por hexágono FN
+   - Atualizar `FN_ASSET_ID` no script GEE com o caminho do asset criado
+
+3. Rodar o script no GEE Code Editor → envia 5 tasks ao Drive (uma por macrorregião)
+
+4. Aguardar tasks terminarem → baixar CSVs do Drive para:
+   `<data_dir>/inputs/raw/gee/fn_e2_hand_diagnostic/`
+
+**Outputs por task:** `fn_hand_diag_macro_{S|SE|CO|NE|N}.csv`
+Colunas: `h3_id, cd_estado, macro, sgb_max_class, hand_mean, hand_p50, hand_p75, hand_p90, jrc_rp100_mean`
+
+---
+
+## Script 07 — Análise de HAND nos Falsos Negativos
+
+**O que faz:** Consolida os CSVs exportados pelo GEE e responde: qual distribuição
+real de HAND existe nos hexágonos FN? Quantos seriam recuperados se o teto HAND
+subisse para 8, 10, 12, 15 ou 20 m? Separa também FN cujo problema é a cobertura
+JRC (não o teto HAND).
+
+**Pré-requisito:** CSVs `fn_hand_diag_macro_*.csv` em `<data_dir>/inputs/raw/gee/fn_e2_hand_diagnostic/`
+
+```bash
+python etl/exposure/sgb/07_sgb_analyse_fn_hand.py
+
+# Diretório alternativo se os CSVs estiverem em outro local
+python etl/exposure/sgb/07_sgb_analyse_fn_hand.py --input-dir /caminho/para/csvs/
+```
+
+**Outputs em `cfg.DIAGNOSE_DIR`:**
+
+- `diagnostic_07_fn_hand_<ts>.txt` — distribuição de HAND por macro e classe SGB,
+  tabela de tetos candidatos com % de FN recuperados
+- `diagnostic_07_fn_hand_candidates_<ts>.csv` — tabela estruturada para documentar decisão
+
+**O que observar:**
+
+- `pct_jrc_zero > 50%` em alguma macro → o gargalo é JRC, não o teto HAND
+- Tabela de tetos: escolher o menor teto cuja recuperação se aproxima do máximo
+  (evita inflar o score com HAND alto demais)
+- Resultado informa ajuste no GEE v2 de E2 e nova ADR
+
+---
+
+## Script 08 — Status do Pipeline por Município
+
+**O que faz:** Reconcilia todos os artefatos do pipeline (manifest, cobertura,
+progress.json, failures.csv) e gera uma tabela mostrando em qual etapa cada
+município "caiu" e por quê, separado por tipo (massa vs inundação).
+
+**Pré-requisito:** Ter rodado ao menos os scripts 00 e 01. Quanto mais scripts
+tiverem sido executados, mais completo o diagnóstico.
+
+```bash
+python etl/exposure/sgb/08_sgb_pipeline_status.py
+
+# Só imprime o sumário sem escrever o CSV
+python etl/exposure/sgb/08_sgb_pipeline_status.py --summary
+```
+
+**Output:** `<data_dir>/inputs/raw/sgb/sgb_pipeline_status.csv`
+
+Uma linha por município com colunas de status por tipo:
+`status_download`, `status_explore_{massa|inundacao}`, `status_extract_{massa|inundacao}`,
+`status_harmonize_{massa|inundacao}`, `in_pipeline_{massa|inundacao}`,
+`last_failure_stage_{massa|inundacao}`, `last_failure_reason_{massa|inundacao}`
+
+**Sumário no terminal:**
+
+```
+[MASSA]
+  Download OK          :   814
+  Explore OK (tipo)    :   750   (sem layer: 30)
+  Extract OK           :   720
+  Harmonize OK         :   710
+  → in_pipeline_mass:   710  (87% do total)
+
+  Dropout por etapa:
+    explore     :   34 falhas
+    extract     :   30 falhas
+    harmonize   :   10 falhas
+```
+
+> **Nota:** O tracking de município por etapa está disponível até o script 03
+> (harmonize). O 04 (H3 intersect) opera por estado e não rastreia por município.
+> `in_pipeline = True` indica que o município chegou ao 03 com sucesso.
 
 ---
 

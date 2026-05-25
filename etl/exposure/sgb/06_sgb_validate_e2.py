@@ -39,6 +39,7 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 
+import h3
 import numpy as np
 import pandas as pd
 
@@ -339,6 +340,12 @@ def analyse_false_negatives(df: pd.DataFrame, best_threshold: float) -> tuple[pd
     fn_raw = fn[["h3_id", "cd_estado", "macro",
                  "sgb_alta_mta_frac", "sgb_max_class",
                  "sgb_coverage_frac", E2_ABS_COL]].copy()
+
+    # Centróide de cada hexágono H3 — necessário para upload como asset GEE
+    coords = fn_raw["h3_id"].map(lambda hid: h3.cell_to_latlng(hid))
+    fn_raw["latitude"]  = coords.map(lambda c: c[0])
+    fn_raw["longitude"] = coords.map(lambda c: c[1])
+
     return macro_fn, fn_raw
 
 
