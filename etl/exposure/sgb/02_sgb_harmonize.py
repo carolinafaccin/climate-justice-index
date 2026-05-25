@@ -28,6 +28,7 @@ Colunas de saída:
 
 USO:
   python 02_sgb_harmonize.py               # processa todos os ZIPs
+  python 02_sgb_harmonize.py --resume      # continua do ponto onde parou (usa 02_progress.json)
   python 02_sgb_harmonize.py --state SE,BA # filtra por estado
   python 02_sgb_harmonize.py --limit 5     # testa com 5 ZIPs
   python 02_sgb_harmonize.py --dry-run     # simula sem escrever arquivos
@@ -54,7 +55,7 @@ def _load_data_dir() -> Path:
             f"Config não encontrado: {config_path}\n"
             "Crie config/config.local.json com {\"data_dir\": \"/caminho/para/data/\"}"
         )
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         return Path(json.load(f)["data_dir"])
 
 _DATA_DIR      = _load_data_dir()
@@ -95,13 +96,13 @@ PROGRESS_FILE = OUTPUT_DIR / "02_progress.json"
 def _load_progress() -> dict[str, set[str]]:
     if not PROGRESS_FILE.exists():
         return {t: set() for t in TIPO_TO_FILE}
-    with open(PROGRESS_FILE) as f:
+    with open(PROGRESS_FILE, encoding="utf-8") as f:
         data = json.load(f)
     return {t: set(data.get(t, [])) for t in TIPO_TO_FILE}
 
 
 def _save_progress(progress: dict[str, set[str]]) -> None:
-    with open(PROGRESS_FILE, "w") as f:
+    with open(PROGRESS_FILE, "w", encoding="utf-8") as f:
         json.dump({t: sorted(v) for t, v in progress.items()}, f, indent=2)
 
 
@@ -136,7 +137,7 @@ def load_mapping() -> dict[str, int]:
         print(f"[ERRO] class_mapping.json não encontrado: {MAPPING_PATH}")
         print("       Execute 01_sgb_explore.py e revise o mapping antes de continuar.")
         sys.exit(1)
-    with open(MAPPING_PATH) as f:
+    with open(MAPPING_PATH, encoding="utf-8") as f:
         data = json.load(f)
     # Suporta tanto {"mapping": {...}} quanto {"chave": valor} direto
     mapping = data.get("mapping", data)

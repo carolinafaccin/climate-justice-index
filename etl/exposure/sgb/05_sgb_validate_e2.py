@@ -45,7 +45,7 @@ from src import config as cfg
 
 def _load_data_dir() -> Path:
     config_path = PROJECT_ROOT / "config" / "config.local.json"
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         return Path(json.load(f)["data_dir"])
 
 
@@ -339,7 +339,7 @@ def write_diagnostic(
         f.write(sweep.nlargest(15, "f1").to_string(index=False))
         f.write("\n")
 
-    sweep.to_csv(csv_path, index=False, float_format="%.4f")
+    sweep.to_csv(csv_path, index=False, float_format="%.4f", encoding="utf-8")
 
     print(f"\n   ✓ Diagnóstico TXT: {txt_path.name}")
     print(f"   ✓ Sweep CSV:       {csv_path.name}")

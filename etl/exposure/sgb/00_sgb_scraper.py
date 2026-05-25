@@ -66,7 +66,7 @@ def _load_data_dir() -> Path:
             f"Config não encontrado: {config_path}\n"
             "Crie config/config.local.json com {\"data_dir\": \"/caminho/para/data/\"}"
         )
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         cfg = json.load(f)
     if "data_dir" not in cfg:
         raise KeyError("Chave 'data_dir' não encontrada em config.local.json")

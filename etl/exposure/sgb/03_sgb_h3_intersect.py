@@ -52,7 +52,7 @@ def _load_data_dir() -> Path:
             f"Config não encontrado: {config_path}\n"
             "Crie config/config.local.json com {\"data_dir\": \"/caminho/para/data/\"}"
         )
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         return Path(json.load(f)["data_dir"])
 
 
@@ -279,7 +279,7 @@ def get_states_from_inventory(tipo: str) -> list[str]:
     """Lê estados disponíveis no inventário sem abrir o GeoPackage."""
     if not INVENTORY_PATH.exists():
         return []
-    df = pd.read_csv(INVENTORY_PATH, usecols=["tipo", "cd_estado"])
+    df = pd.read_csv(INVENTORY_PATH, usecols=["tipo", "cd_estado"], encoding="utf-8")
     return sorted(df[df["tipo"] == tipo]["cd_estado"].dropna().unique())
 
 
