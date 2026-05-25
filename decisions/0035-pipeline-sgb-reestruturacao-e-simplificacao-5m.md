@@ -28,9 +28,9 @@ Dois problemas surgiram em produção:
 | `02_sgb_harmonize.py` | `02_sgb_extract.py` + `03_sgb_harmonize.py` |
 
 **`02_sgb_extract.py`** — extração e harmonização por município:
-- Lê cada ZIP e grava em `por_municipio/{UF}/{cd_mun}_{nm}/`
-- Subfolder `raw/` com os arquivos originais intactos do ZIP
-- Um GPKG por tipo (`{cd_mun}_inundacao.gpkg`, `{cd_mun}_massa.gpkg`) com geometria em resolução completa e colunas padronizadas
+- Lê cada ZIP e grava em `por_municipio/{UF}/`
+- Um GPKG por tipo (`{sigla_uf}_{nm_mun}_inundacao.gpkg`, `{sigla_uf}_{nm_mun}_massa.gpkg`) com geometria em resolução completa e colunas padronizadas
+- Os arquivos brutos permanecem apenas nos ZIPs originais (`raw_zips/`)
 - **Sem simplificação**
 
 **`03_sgb_harmonize.py`** — consolidação com simplificação:

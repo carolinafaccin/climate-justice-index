@@ -27,14 +27,18 @@ USO:
   python 04_sgb_h3_intersect.py --tipo inundacao    # só inundações
   python 04_sgb_h3_intersect.py --state SP,RJ       # filtra estados (teste)
   python 04_sgb_h3_intersect.py --dry-run           # não escreve saída
+  python 04_sgb_h3_intersect.py --resume            # continua de onde parou (parquets por estado)
 """
 
+import io
 import json
+import shutil
 import sys
 import argparse
 import math
 import warnings
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import geopandas as gpd
@@ -69,6 +73,7 @@ OUTPUT_FILES = {
     "massa":     OUTPUT_DIR / "br_h3_sgb_massa.parquet",
     "inundacao": OUTPUT_DIR / "br_h3_sgb_inundacoes.parquet",
 }
+PARTIAL_DIR = HARMONIZED_DIR / "04_partial"
 
 CRS_GEO  = "EPSG:4674"   # SIRGAS 2000 geográfico — sistema nativo do H3
 CRS_PROJ = "EPSG:5880"   # SIRGAS 2000 / Brazil Polyconic — para cálculo de área em m²
@@ -275,6 +280,45 @@ def aggregate_results(parts: list[pd.DataFrame]) -> pd.DataFrame:
 # ORQUESTRAÇÃO
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _intersect_state_worker(task: dict) -> dict:
+    """Carrega um estado e calcula interseção H3. Chamado por ProcessPoolExecutor."""
+    gpkg_path  = Path(task["gpkg_path"])
+    state      = task["state"]
+    buf = io.StringIO()
+    old_stdout = sys.stdout
+    sys.stdout = buf
+    try:
+        state_gdf = gpd.read_file(gpkg_path, layer="suscetibilidade", where=f"sigla_uf = '{state}'")
+        if state_gdf.empty:
+            sys.stdout = old_stdout
+            return {"state": state, "result": None, "n_feats": 0,
+                    "output": buf.getvalue(), "error": "sem feições"}
+        n_feats = len(state_gdf)
+        t0 = time.perf_counter()
+        result_df = intersect_state(state_gdf, state)
+        elapsed = time.perf_counter() - t0
+        del state_gdf
+    except Exception as exc:
+        sys.stdout = old_stdout
+        return {"state": state, "result": None, "n_feats": 0,
+                "output": buf.getvalue(), "error": str(exc)}
+    finally:
+        sys.stdout = old_stdout
+
+    if result_df.empty:
+        return {"state": state, "result": None, "n_feats": n_feats,
+                "output": buf.getvalue(), "elapsed": elapsed, "error": "sem interseções H3"}
+    return {
+        "state":   state,
+        "result":  result_df,
+        "n_feats": n_feats,
+        "n_cells": len(result_df),
+        "elapsed": elapsed,
+        "output":  buf.getvalue(),
+        "error":   None,
+    }
+
+
 def get_states_from_inventory(tipo: str) -> list[str]:
     """Lê estados disponíveis no inventário sem abrir o GeoPackage."""
     if not INVENTORY_PATH.exists():
@@ -287,6 +331,8 @@ def process_tipo(
     tipo: str,
     state_filter: list[str] | None = None,
     dry_run: bool = False,
+    resume: bool = False,
+    workers: int = 1,
 ) -> None:
     gpkg_path = GPKG_FILES[tipo]
     if not gpkg_path.exists():
@@ -295,15 +341,13 @@ def process_tipo(
         return
 
     print(f"\n{'═' * 60}")
-    print(f"TIPO: {tipo.upper()}")
+    print(f"TIPO: {tipo.upper()} | workers={workers}")
     print(f"{'═' * 60}")
 
-    # Lista de estados a processar
     states = get_states_from_inventory(tipo)
     if state_filter:
         states = [s for s in states if s in state_filter]
     if not states:
-        # Fallback: lê estados diretamente do GeoPackage (carrega geometria mas descarta imediatamente)
         print("  Inventário não encontrado — lendo estados do GeoPackage...")
         meta_gdf = gpd.read_file(gpkg_path, layer="suscetibilidade", where="sigla_uf IS NOT NULL")
         states = sorted(meta_gdf["sigla_uf"].dropna().unique())
@@ -311,85 +355,104 @@ def process_tipo(
         if state_filter:
             states = [s for s in states if s in state_filter]
 
-    print(f"  {len(states)} estado(s) a processar: {', '.join(states)}")
+    n_states   = len(states)
+    partial_dir = PARTIAL_DIR / tipo
+
+    # Resume: carrega estados já processados de parquets intermediários
+    done_states: set[str] = set()
+    if resume and not dry_run:
+        if partial_dir.exists():
+            done_states = {p.stem for p in partial_dir.glob("*.parquet")}
+        if done_states:
+            print(f"  [RESUME] {len(done_states)} estado(s) já processados: "
+                  f"{', '.join(sorted(done_states))}")
+    elif not dry_run and partial_dir.exists():
+        shutil.rmtree(partial_dir)
+
+    tasks  = [{"gpkg_path": str(gpkg_path), "state": s} for s in states if s not in done_states]
+    n_tasks = len(tasks)
+    n_skip  = n_states - n_tasks
+    print(f"  {n_states} estado(s) total | {n_tasks} a processar, {n_skip} já concluídos")
     if dry_run:
         print("  [DRY RUN] — nenhum arquivo será escrito.")
+        return
 
+    # Carrega resultados parciais existentes para agregação final
     parts: list[pd.DataFrame] = []
+    if resume and done_states:
+        for state in sorted(done_states):
+            p = partial_dir / f"{state}.parquet"
+            if p.exists():
+                parts.append(pd.read_parquet(p))
+
     interrupted = False
-    last_i = 0
+    t_total = time.perf_counter()
+
+    def _handle_state_result(res: dict, idx: int) -> None:
+        state_prefix = f"  [{idx:>2}/{n_tasks}] {res['state']}"
+        if res.get("error"):
+            print(f"{state_prefix}  ✗ {res['error']}")
+            return
+        n_cells    = res["n_cells"]
+        alta_count = (res["result"]["alta_area_m2"] > 0).sum()
+        elapsed    = res.get("elapsed", 0)
+        print(f"{state_prefix}  {res['n_feats']:,} feições → {n_cells:,} hexágonos "
+              f"({alta_count:,} com classe ≥ 4)  [{elapsed:.0f}s]")
+        partial_dir.mkdir(parents=True, exist_ok=True)
+        res["result"].to_parquet(partial_dir / f"{res['state']}.parquet", index=False)
+        parts.append(res["result"])
 
     try:
-        for i, state in enumerate(states, 1):
-            last_i = i
-            state_prefix = f"  [{i:>2}/{len(states)}] {state}"
-
-            # Carrega apenas o estado atual (reduz uso de memória)
-            try:
-                state_gdf = gpd.read_file(
-                    gpkg_path,
-                    layer="suscetibilidade",
-                    where=f"sigla_uf = '{state}'",
-                )
-            except Exception as e:
-                print(f"{state_prefix}  ✗ erro ao carregar: {e}")
-                continue
-
-            if state_gdf.empty:
-                print(f"{state_prefix}  sem feições")
-                continue
-
-            n_feats = len(state_gdf)
-            print(f"{state_prefix}  {n_feats:,} feições", flush=True)
-
-            t0 = time.perf_counter()
-            try:
-                result = intersect_state(state_gdf, state)
-            except Exception as e:
-                elapsed = time.perf_counter() - t0
-                print(f"\n    ✗ erro ao calcular interseção [{elapsed:.0f}s]: {e}")
-                del state_gdf
-                continue
-            elapsed = time.perf_counter() - t0
-            del state_gdf  # libera memória imediatamente
-
-            if result.empty:
-                print(f"\r    sem interseções H3  [{elapsed:.0f}s]              ")
-                continue
-
-            n_cells = len(result)
-            alta_count = (result["alta_area_m2"] > 0).sum()
-            print(f"\r    {n_cells:,} hexágonos ({alta_count:,} com classe ≥ 4)  [{elapsed:.0f}s]              ")
-            parts.append(result)
+        if workers == 1:
+            for i, task in enumerate(tasks, 1):
+                res = _intersect_state_worker(task)
+                _handle_state_result(res, i)
+        else:
+            with ProcessPoolExecutor(max_workers=workers) as executor:
+                futures = {executor.submit(_intersect_state_worker, t): t for t in tasks}
+                completed = 0
+                for future in as_completed(futures):
+                    completed += 1
+                    try:
+                        res = future.result()
+                    except Exception as exc:
+                        task = futures[future]
+                        print(f"  [{completed:>2}/{n_tasks}] {task['state']}  ✗ ERRO: {exc}")
+                        continue
+                    _handle_state_result(res, completed)
 
     except KeyboardInterrupt:
         interrupted = True
-        n_done = last_i
-        print(f"\n[INTERROMPIDO] Ctrl+C — {n_done}/{len(states)} estado(s) processados.")
-        if parts:
-            print("  Salvando resultado parcial dos estados já processados...")
-        else:
+        elapsed_so_far = time.perf_counter() - t_total
+        n_done = len(done_states) + len(parts) - len(done_states)
+        print(f"\n[INTERROMPIDO] Ctrl+C — {len(parts)}/{n_states} estado(s) concluídos "
+              f"[{elapsed_so_far:.0f}s]")
+        if not parts:
             print("  Nenhum estado completo — nada a salvar.")
             return
+        print("  Rode com --resume para continuar de onde parou.")
 
     if not parts:
         print("\n  Nenhum resultado — verifique se os GeoPackages têm dados.")
         return
 
-    print("\n  Agregando resultados entre estados...", end=" ", flush=True)
+    total_elapsed = time.perf_counter() - t_total
+    print(f"\n  Agregando resultados entre estados...", end=" ", flush=True)
     final = aggregate_results(parts)
     print(f"{len(final):,} hexágonos únicos")
     print(f"  sgb_alta_mta_frac > 0.3 : {(final['sgb_alta_mta_frac'] > 0.3).sum():,} hexágonos")
     print(f"  sgb_max_class >= 4      : {(final['sgb_max_class'] >= 4).sum():,} hexágonos")
     if interrupted:
-        print(f"  [PARCIAL] {len(parts)} estado(s) de {len(states)} — rode novamente para resultado completo.")
+        print(f"  [PARCIAL] {len(parts)} estado(s) de {n_states} — rode com --resume para completar.")
 
-    if not dry_run:
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        out_path = OUTPUT_FILES[tipo]
-        final.to_parquet(out_path, index=False)
-        label = " (parcial)" if interrupted else ""
-        print(f"  ✓ Salvo{label}: {out_path}")
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = OUTPUT_FILES[tipo]
+    final.to_parquet(out_path, index=False)
+    label = " (parcial)" if interrupted else ""
+    print(f"  ✓ Salvo{label}: {out_path}  [{total_elapsed:.0f}s total]")
+
+    if not interrupted and partial_dir.exists():
+        shutil.rmtree(partial_dir)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -418,6 +481,17 @@ def main() -> None:
         action="store_true",
         help="Simula o processamento sem escrever arquivos",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Continua do ponto onde parou (lê parquets intermediários por estado)",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Estados processados em paralelo (padrão: 1, recomendado: 4)",
+    )
 
     args = parser.parse_args()
     state_filter = (
@@ -429,7 +503,8 @@ def main() -> None:
 
     print(f"H3 res{H3_RES} | célula média: {H3_CELL_AREA_M2:,.0f} m²")
     for tipo in tipos:
-        process_tipo(tipo, state_filter=state_filter, dry_run=args.dry_run)
+        process_tipo(tipo, state_filter=state_filter, dry_run=args.dry_run,
+                     resume=args.resume, workers=args.workers)
 
 
 if __name__ == "__main__":

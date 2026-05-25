@@ -123,10 +123,11 @@ por município (CRS padronizado, make_valid, classe mapeada). Sem simplificaçã
 
 **Pré-requisito:** `01_sgb_mapping.json` revisado (sem valores `-1` não intencionais).
 
-**Outputs em `por_municipio/{UF}/{cd_mun}_{nm}/`:**
-- `raw/` — arquivos brutos extraídos do ZIP
-- `{cd_mun}_inundacao.gpkg` — harmonizado, sem simplificação
-- `{cd_mun}_massa.gpkg` — harmonizado, sem simplificação
+**Outputs em `por_municipio/{UF}/`:**
+- `{sigla_uf}_{nm_mun}_inundacao.gpkg` — harmonizado, sem simplificação
+- `{sigla_uf}_{nm_mun}_massa.gpkg` — harmonizado, sem simplificação
+
+Os arquivos brutos permanecem nos ZIPs originais (`raw_zips/`).
 
 ```bash
 # Teste sem escrever nada (recomendado na primeira vez)
@@ -268,9 +269,8 @@ python etl/exposure/sgb/06_sgb_validate_e2.py --sgb-ref 0.2 --min-coverage 0.3
 
 02 extract --dry-run → extract
   ↓
-  por_municipio/{UF}/{cd_mun}_{nm}/raw/
-  por_municipio/{UF}/{cd_mun}_{nm}/{cd_mun}_inundacao.gpkg
-  por_municipio/{UF}/{cd_mun}_{nm}/{cd_mun}_massa.gpkg
+  por_municipio/{UF}/{sigla_uf}_{nm_mun}_inundacao.gpkg
+  por_municipio/{UF}/{sigla_uf}_{nm_mun}_massa.gpkg
 
 03 harmonize --dry-run → harmonize
   ↓
@@ -296,10 +296,8 @@ data/inputs/raw/sgb/
 ├── raw_zips/                        # ZIPs baixados (um por município)
 ├── por_municipio/                   # output do 02
 │   └── {UF}/
-│       └── {cd_mun}_{nm}/
-│           ├── raw/                 # arquivos brutos extraídos do ZIP
-│           ├── {cd_mun}_inundacao.gpkg
-│           └── {cd_mun}_massa.gpkg
+│       ├── {sigla_uf}_{nm_mun}_inundacao.gpkg
+│       └── {sigla_uf}_{nm_mun}_massa.gpkg
 ├── harmonized/                      # output do 03
 │   ├── 03_sgb_floods_br.gpkg
 │   └── 03_sgb_mass_br.gpkg

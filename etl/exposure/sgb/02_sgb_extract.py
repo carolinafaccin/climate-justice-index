@@ -9,10 +9,11 @@ Requer (executar antes):
   - 00_sgb_scraper.py   → 00_sgb_manifest.csv
   - 01_sgb_explore.py   → 01_sgb_inventory.csv + 01_sgb_mapping.json
 
-Outputs (em data/inputs/raw/sgb/por_municipio/{UF}/{cd_mun}_{nm}/):
-  raw/                       — arquivos brutos extraídos do ZIP (SHP, GPKG, TIF)
-  {cd_mun}_inundacao.gpkg    — dados de inundação harmonizados, sem simplificação
-  {cd_mun}_massa.gpkg        — dados de massa harmonizados, sem simplificação
+Outputs (em data/inputs/raw/sgb/por_municipio/{UF}/):
+  {sigla_uf}_{nm_mun}_inundacao.gpkg  — dados de inundação harmonizados, sem simplificação
+  {sigla_uf}_{nm_mun}_massa.gpkg      — dados de massa harmonizados, sem simplificação
+
+Os arquivos brutos permanecem nos ZIPs originais (raw_zips/).
 
 Colunas dos GPKGs de saída:
   cd_mun        — geocódigo IBGE de 7 dígitos (ex: 3550308)
@@ -41,7 +42,10 @@ import zipfile
 import tempfile
 import sys
 import argparse
+import io
 import warnings
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 import geopandas as gpd
 import pandas as pd
@@ -85,22 +89,34 @@ OUTPUT_COLS = [
     "zip_filename", "geometry",
 ]
 
+_W: dict = {}  # worker-process globals — preenchido por _init_worker
+
+
+def _init_worker(mapping: dict, ibge_lookup: dict) -> None:
+    _W["mapping"] = mapping
+    _W["ibge_lookup"] = ibge_lookup
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PROGRESSO / RESUME
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _load_progress() -> set[str]:
-    """Retorna set de zip_filenames já completamente extraídos."""
+def _load_progress() -> dict[str, set[str]]:
+    """Retorna dict tipo → set de zip_filenames já extraídos para aquele tipo."""
     if not PROGRESS_FILE.exists():
-        return set()
+        return {t: set() for t in TIPOS}
     with open(PROGRESS_FILE, encoding="utf-8") as f:
-        return set(json.load(f))
+        data = json.load(f)
+    if isinstance(data, list):
+        # formato antigo: assume ambos os tipos done para os zips listados
+        old_done = set(data)
+        return {t: set(old_done) for t in TIPOS}
+    return {t: set(data.get(t, [])) for t in TIPOS}
 
 
-def _save_progress(done: set[str]) -> None:
+def _save_progress(done: dict[str, set[str]]) -> None:
     with open(PROGRESS_FILE, "w", encoding="utf-8") as f:
-        json.dump(sorted(done), f, indent=2)
+        json.dump({t: sorted(v) for t, v in done.items()}, f, indent=2)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -422,23 +438,92 @@ def process_tif(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# EXTRAÇÃO DOS ARQUIVOS BRUTOS
+# HELPERS DE CAMINHO
 # ══════════════════════════════════════════════════════════════════════════════
 
-def extract_raw(zip_path: Path, raw_dir: Path) -> None:
-    """Extrai o conteúdo completo do ZIP para raw_dir."""
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(zip_path) as zf:
-        zf.extractall(raw_dir)
+def _mun_slug(nm_mun: str) -> str:
+    return re.sub(r"[^\w]", "_", nm_mun.strip(), flags=re.ASCII).strip("_")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PASTA POR MUNICÍPIO
+# WORKER
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _mun_dir(sigla_uf: str, cd_mun: str, nm_mun: str) -> Path:
-    slug = re.sub(r"[^\w]", "_", nm_mun.strip(), flags=re.ASCII).strip("_")
-    return POR_MUN_DIR / sigla_uf / f"{cd_mun}_{slug}"
+def _do_process_zip(task: dict) -> dict:
+    """Processa os tipos de um ZIP: lê SHP/GPKG/TIF e escreve GPKGs de saída."""
+    zip_path = Path(task["zip_path"])
+    uf_dir   = Path(task["uf_dir"])
+    mun_meta = task["mun_meta"]
+    nm_mun   = task["nm_mun"]
+    sigla_uf = task["sigla_uf"]
+    mapping     = _W["mapping"]
+    ibge_lookup = _W["ibge_lookup"]
+
+    tipos_ok: list[str] = []
+    tipos_err: list[str] = []
+
+    for tipo, rows_list in task["tipo_rows"].items():
+        gdfs = []
+        for row in rows_list:
+            file_in_zip  = row["shp_path_in_zip"]
+            display_name = file_in_zip if "::" in file_in_zip else Path(file_in_zip).name
+            print(f"    → {tipo}: {display_name}", end=" ", flush=True)
+            ext = Path(file_in_zip.split("::")[0]).suffix.lower()
+            if ext in {".tif", ".tiff"}:
+                gdf = process_tif(zip_path, file_in_zip, mapping, mun_meta, ibge_lookup)
+            else:
+                gdf = process_shapefile(
+                    zip_path, file_in_zip,
+                    str(row.get("classe_col") or ""),
+                    mapping, mun_meta, ibge_lookup,
+                )
+            if gdf is not None and not gdf.empty:
+                gdfs.append(gdf)
+
+        if not gdfs:
+            print(f"    ✗ {tipo}: sem geometrias válidas")
+            tipos_err.append(tipo)
+            continue
+
+        combined = pd.concat(gdfs, ignore_index=True)
+        combined = gpd.GeoDataFrame(combined, geometry="geometry", crs=TARGET_CRS)
+
+        slug     = _mun_slug(nm_mun)
+        out_path = uf_dir / f"{sigla_uf}_{slug}_{tipo}.gpkg"
+        uf_dir.mkdir(parents=True, exist_ok=True)
+        if out_path.exists():
+            out_path.unlink()
+        try:
+            combined.to_file(out_path, driver="GPKG", layer="suscetibilidade")
+            print(f"✓ {len(combined)} feições")
+            tipos_ok.append(tipo)
+        except Exception as e:
+            print(f"✗ erro ao escrever: {e}")
+            tipos_err.append(tipo)
+
+    return {"zip_name": task["zip_name"], "tipos_ok": tipos_ok, "tipos_err": tipos_err}
+
+
+def _process_zip_worker(task: dict) -> dict:
+    """Wrapper que captura stdout para evitar output interleaved em modo paralelo."""
+    buf = io.StringIO()
+    old_stdout = sys.stdout
+    sys.stdout = buf
+    t0 = time.perf_counter()
+    try:
+        result = _do_process_zip(task)
+    except Exception as exc:
+        result = {
+            "zip_name": task["zip_name"],
+            "tipos_ok": [],
+            "tipos_err": list(task.get("tipo_rows", {}).keys()),
+            "fatal": str(exc),
+        }
+    finally:
+        sys.stdout = old_stdout
+    result["output"]  = buf.getvalue()
+    result["elapsed"] = time.perf_counter() - t0
+    return result
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -450,6 +535,7 @@ def extract(
     limit: int | None = None,
     dry_run: bool = False,
     resume: bool = False,
+    workers: int = 1,
 ) -> None:
     mapping     = load_mapping()
     inventory   = load_inventory()
@@ -457,142 +543,150 @@ def extract(
     ibge_lookup = load_ibge_municipios()
 
     all_zips = sorted(inventory["zip_filename"].unique())
+    zips_with_tipo = {t: set(inventory[inventory["tipo"] == t]["zip_filename"]) for t in TIPOS}
 
     if state_filter:
         tags     = [f"_{s.lower()}_" for s in state_filter]
         all_zips = [z for z in all_zips if any(t in z.lower() for t in tags)]
-
     if limit:
         all_zips = all_zips[:limit]
 
-    total = len(all_zips)
-    print(f"\n[EXTRACT] {total} ZIPs | dry_run={dry_run} | resume={resume}")
+    print(f"\n[EXTRACT] {len(all_zips)} ZIPs | dry_run={dry_run} | resume={resume} | workers={workers}")
 
-    done: set[str] = set()
+    done: dict[str, set[str]] = {t: set() for t in TIPOS}
     if resume:
         done = _load_progress()
-        print(f"  [RESUME] {len(done)} ZIPs já processados — serão pulados.")
+        n_done = sum(len(v) for v in done.values())
+        print(f"  [RESUME] {n_done} entradas (zip+tipo) já processadas — serão puladas.")
     elif not dry_run and PROGRESS_FILE.exists():
         PROGRESS_FILE.unlink()
 
     counts = {"ok": 0, "skip": 0, "err": 0}
     interrupted = False
-    last_i = 0
 
+    # ── Prepara lista de tasks ─────────────────────────────────────────────────
+    tasks: list[dict] = []
+    for zip_name in all_zips:
+        zip_path = DOWNLOAD_DIR / zip_name
+        if not zip_path.exists():
+            print(f"  SKIP arquivo não encontrado: {zip_name}")
+            counts["skip"] += 1
+            continue
+
+        mun_meta = manifest.get(zip_name, {})
+        cd_mun   = str(mun_meta.get("cd_mun_ibge", "")).strip()
+        ibge     = ibge_lookup.get(cd_mun, {})
+        sigla_uf = ibge.get("sigla_uf") or mun_meta.get("cd_estado", "SEM_UF")
+        nm_mun   = ibge.get("nm_mun") or mun_meta.get("nm_municipio", cd_mun or zip_name)
+
+        if resume and all(zip_name in done[t] for t in TIPOS if zip_name in zips_with_tipo[t]):
+            counts["skip"] += 1
+            continue
+
+        rows = inventory[inventory["zip_filename"] == zip_name].copy()
+        for tipo_grp in TIPOS:
+            mask_tipo = rows["tipo"] == tipo_grp
+            has_gpkg  = rows[mask_tipo]["shp_path_in_zip"].str.contains("::", na=False).any()
+            if has_gpkg:
+                drop = mask_tipo & ~rows["shp_path_in_zip"].str.contains("::", na=False)
+                if drop.any():
+                    rows = rows[~drop]
+
+        tipo_rows_dict: dict[str, list] = {}
+        for tipo in TIPOS:
+            t_rows = rows[rows["tipo"] == tipo]
+            if t_rows.empty or (resume and zip_name in done[tipo]):
+                continue
+            tipo_rows_dict[tipo] = (
+                t_rows[["shp_path_in_zip", "classe_col"]].fillna("").to_dict("records")
+            )
+
+        if not tipo_rows_dict:
+            counts["skip"] += 1
+            continue
+
+        tasks.append({
+            "zip_name": zip_name,
+            "zip_path": str(zip_path),
+            "uf_dir":   str(POR_MUN_DIR / sigla_uf),
+            "mun_meta": mun_meta,
+            "nm_mun":   nm_mun,
+            "sigla_uf": sigla_uf,
+            "tipo_rows": tipo_rows_dict,
+            "label":    f"{nm_mun} ({sigla_uf})",
+        })
+
+    n_tasks = len(tasks)
+    print(f"  {n_tasks} ZIPs a processar, {counts['skip']} já concluídos ou ausentes.")
+
+    if dry_run:
+        for task in tasks:
+            print(f"  {task['label']} [DRY RUN]")
+        counts["ok"] += n_tasks
+        print(f"\nEXTRAÇÃO CONCLUÍDA (DRY RUN)\n  ok: {n_tasks:4}  skip: {counts['skip']:4}")
+        return
+
+    if not tasks:
+        print(f"\n{'═'*60}\nEXTRAÇÃO CONCLUÍDA — nada a processar.")
+        return
+
+    def _handle_result(result: dict) -> None:
+        for tipo in result.get("tipos_ok", []):
+            done[tipo].add(result["zip_name"])
+        _save_progress(done)
+        if result.get("fatal") or (result.get("tipos_err") and not result.get("tipos_ok")):
+            counts["err"] += 1
+        else:
+            counts["ok"] += 1
+
+    def _print_result(result: dict, idx: int, label: str) -> None:
+        elapsed   = result.get("elapsed", 0)
+        tipos_ok  = result.get("tipos_ok", [])
+        tipos_err = result.get("tipos_err", [])
+        ok_str    = "+".join(tipos_ok)  if tipos_ok  else "—"
+        err_str   = "  ✗ " + "+".join(tipos_err) if tipos_err else ""
+        print(f"  [{idx:>3}/{n_tasks}] {label}  {ok_str}{err_str}  [{elapsed:.1f}s]")
+        print(result.get("output", ""), end="")
+        if "fatal" in result:
+            print(f"    [ERRO FATAL] {result['fatal']}")
+
+    # ── Execução: serial (workers=1) ou paralelo ───────────────────────────────
+    t_total = time.perf_counter()
     try:
-        for i, zip_name in enumerate(all_zips, 1):
-            last_i = i
-            zip_path = DOWNLOAD_DIR / zip_name
-
-            if not zip_path.exists():
-                print(f"  [{i:>3}/{total}] SKIP arquivo não encontrado: {zip_name}")
-                counts["skip"] += 1
-                continue
-
-            if resume and zip_name in done:
-                counts["skip"] += 1
-                continue
-
-            mun_meta = manifest.get(zip_name, {})
-            cd_mun   = str(mun_meta.get("cd_mun_ibge", "")).strip()
-            ibge     = ibge_lookup.get(cd_mun, {})
-            sigla_uf = ibge.get("sigla_uf") or mun_meta.get("cd_estado", "SEM_UF")
-            nm_mun   = ibge.get("nm_mun") or mun_meta.get("nm_municipio", cd_mun or zip_name)
-            label    = f"{nm_mun} ({sigla_uf})"
-
-            print(f"  [{i:>3}/{total}] {label}")
-
-            if dry_run:
-                print("    [DRY RUN]")
-                counts["ok"] += 1
-                continue
-
-            mun_path = _mun_dir(sigla_uf, cd_mun, nm_mun)
-
-            # Extrai arquivos brutos
-            raw_dir = mun_path / "raw"
-            try:
-                extract_raw(zip_path, raw_dir)
-            except Exception as e:
-                print(f"    [AVISO] erro ao extrair raw: {e}")
-
-            # Rows deste ZIP no inventory
-            rows = inventory[inventory["zip_filename"] == zip_name].copy()
-
-            # Dedup: para o mesmo tipo, prefere GPKG sobre SHP
-            for tipo_grp in TIPOS:
-                mask_tipo = rows["tipo"] == tipo_grp
-                tipo_rows = rows[mask_tipo]
-                has_gpkg  = tipo_rows["shp_path_in_zip"].str.contains("::", na=False).any()
-                if has_gpkg:
-                    drop = mask_tipo & ~rows["shp_path_in_zip"].str.contains("::", na=False)
-                    if drop.any():
-                        rows = rows[~drop]
-
-            # Processa e escreve por tipo
-            zip_ok = True
-            for tipo in TIPOS:
-                tipo_rows = rows[rows["tipo"] == tipo]
-                if tipo_rows.empty:
-                    continue
-
-                gdfs = []
-                for _, row in tipo_rows.iterrows():
-                    file_in_zip  = str(row["shp_path_in_zip"])
-                    display_name = file_in_zip if "::" in file_in_zip else Path(file_in_zip).name
-                    print(f"    → {tipo}: {display_name}", end=" ", flush=True)
-
-                    base_path = file_in_zip.split("::")[0]
-                    file_ext  = Path(base_path).suffix.lower()
-
-                    if file_ext in {".tif", ".tiff"}:
-                        gdf = process_tif(zip_path, file_in_zip, mapping, mun_meta, ibge_lookup)
-                    else:
-                        gdf = process_shapefile(
-                            zip_path,
-                            file_in_zip,
-                            str(row.get("classe_col", "") or ""),
-                            mapping,
-                            mun_meta,
-                            ibge_lookup,
-                        )
-
-                    if gdf is None or gdf.empty:
-                        zip_ok = False
+        if workers == 1:
+            _init_worker(mapping, ibge_lookup)
+            for i, task in enumerate(tasks, 1):
+                result = _process_zip_worker(task)
+                _print_result(result, i, task["label"])
+                _handle_result(result)
+        else:
+            with ProcessPoolExecutor(
+                max_workers=workers,
+                initializer=_init_worker,
+                initargs=(mapping, ibge_lookup),
+            ) as executor:
+                futures = {executor.submit(_process_zip_worker, task): task for task in tasks}
+                completed = 0
+                for future in as_completed(futures):
+                    completed += 1
+                    task = futures[future]
+                    try:
+                        result = future.result()
+                    except Exception as exc:
+                        print(f"  [{completed:>3}/{n_tasks}] {task['label']} — ERRO: {exc}")
+                        counts["err"] += 1
                         continue
-                    gdfs.append(gdf)
-
-                if not gdfs:
-                    zip_ok = False
-                    continue
-
-                combined = pd.concat(gdfs, ignore_index=True)
-                combined = gpd.GeoDataFrame(combined, geometry="geometry", crs=TARGET_CRS)
-
-                out_path = mun_path / f"{cd_mun}_{tipo}.gpkg"
-                mun_path.mkdir(parents=True, exist_ok=True)
-                try:
-                    combined.to_file(out_path, driver="GPKG", layer="suscetibilidade")
-                    print(f"✓ {len(combined)} feições")
-                except Exception as e:
-                    print(f"✗ erro ao escrever: {e}")
-                    zip_ok = False
-
-            if zip_ok:
-                done.add(zip_name)
-                _save_progress(done)
-                counts["ok"] += 1
-            else:
-                counts["err"] += 1
+                    _print_result(result, completed, task["label"])
+                    _handle_result(result)
 
     except KeyboardInterrupt:
         interrupted = True
-        print(f"\n[INTERROMPIDO] Ctrl+C — {last_i}/{total} ZIPs processados.")
-        print("  Rode com --resume para continuar.")
+        print(f"\n[INTERROMPIDO] Ctrl+C — rode com --resume para continuar.")
 
+    total_elapsed = time.perf_counter() - t_total
     print(f"\n{'═'*60}")
     status = "INTERROMPIDO" if interrupted else "EXTRAÇÃO CONCLUÍDA"
-    print(f"{status}{' (DRY RUN)' if dry_run else ''}")
+    print(f"{status}  [{total_elapsed:.0f}s total]")
     print(f"  ok: {counts['ok']:4}  skip: {counts['skip']:4}  erros: {counts['err']:4}")
     print(f"  Saída: {POR_MUN_DIR}")
 
@@ -614,6 +708,8 @@ def main() -> None:
                         help="Simula sem escrever arquivos")
     parser.add_argument("--resume",  action="store_true",
                         help="Continua do ponto onde parou (lê 02_progress.json)")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="Processos paralelos (padrão: 1, recomendado: 4)")
 
     args = parser.parse_args()
     state_filter = [s.strip().upper() for s in args.state.split(",")] if args.state else None
@@ -623,6 +719,7 @@ def main() -> None:
         limit=args.limit,
         dry_run=args.dry_run,
         resume=args.resume,
+        workers=args.workers,
     )
 
 

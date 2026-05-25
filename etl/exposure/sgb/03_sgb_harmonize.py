@@ -30,9 +30,12 @@ USO:
 """
 
 import json
+import re
 import sys
 import argparse
 import sqlite3
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import geopandas as gpd
@@ -84,6 +87,10 @@ def _save_progress(progress: dict[str, set[str]]) -> None:
         json.dump({t: sorted(v) for t, v in progress.items()}, f, indent=2)
 
 
+def _slug(text: str) -> str:
+    return re.sub(r"[^\w]", "_", text.strip(), flags=re.ASCII).strip("_")
+
+
 def rebuild_progress() -> dict[str, set[str]]:
     """Reconstrói progresso lendo os GPKGs consolidados via SQLite."""
     progress: dict[str, set[str]] = {t: set() for t in TIPOS}
@@ -95,10 +102,11 @@ def rebuild_progress() -> dict[str, set[str]]:
         try:
             conn = sqlite3.connect(str(out_path))
             rows = conn.execute(
-                "SELECT DISTINCT cd_mun FROM suscetibilidade WHERE cd_mun IS NOT NULL"
+                "SELECT DISTINCT sigla_uf, nm_municipio FROM suscetibilidade "
+                "WHERE sigla_uf IS NOT NULL AND nm_municipio IS NOT NULL"
             ).fetchall()
             conn.close()
-            progress[tipo] = {r[0] for r in rows}
+            progress[tipo] = {f"{r[0]}_{_slug(r[1])}" for r in rows}
             print(f"  {fname}: {len(progress[tipo])} municípios já processados.")
         except Exception as e:
             print(f"  [ERRO] ao ler {fname}: {e}")
@@ -114,13 +122,41 @@ def _find_mun_gpkgs(tipo: str, state_filter: list[str] | None) -> list[Path]:
     paths = sorted(POR_MUN_DIR.glob(f"**/*_{tipo}.gpkg"))
     if state_filter:
         uf_set = {s.upper() for s in state_filter}
-        paths  = [p for p in paths if p.parent.parent.name.upper() in uf_set]
+        # Com a estrutura atual, o arquivo fica direto em por_municipio/{UF}/
+        paths  = [p for p in paths if p.parent.name.upper() in uf_set]
     return paths
+
+
+def _mun_id_from_stem(stem: str) -> str:
+    """Extrai identificador do município a partir do stem do arquivo (sem o sufixo _tipo)."""
+    return stem.rsplit("_", 1)[0]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SIMPLIFICAÇÃO
 # ══════════════════════════════════════════════════════════════════════════════
+
+def _simplify_worker(task: dict) -> dict:
+    """Lê e simplifica um GPKG municipal. Chamado por ProcessPoolExecutor."""
+    gpkg_path = Path(task["gpkg_path"])
+    mun_id    = task["mun_id"]
+    display   = task["display"]
+    t0 = time.perf_counter()
+    try:
+        gdf = gpd.read_file(gpkg_path, layer="suscetibilidade")
+        if gdf is None or gdf.empty:
+            return {"mun_id": mun_id, "display": display, "gdf": None, "error": "vazio",
+                    "elapsed": time.perf_counter() - t0}
+        gdf = _simplify(gdf)
+        if gdf.empty:
+            return {"mun_id": mun_id, "display": display, "gdf": None,
+                    "error": "vazio após simplificação", "elapsed": time.perf_counter() - t0}
+        return {"mun_id": mun_id, "display": display, "gdf": gdf, "error": None,
+                "elapsed": time.perf_counter() - t0}
+    except Exception as e:
+        return {"mun_id": mun_id, "display": display, "gdf": None, "error": str(e),
+                "elapsed": time.perf_counter() - t0}
+
 
 def _simplify(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Simplifica geometrias a SIMPLIFY_M metros, reprojetando para CRS_PROJ."""
@@ -140,6 +176,7 @@ def harmonize(
     limit: int | None = None,
     dry_run: bool = False,
     resume: bool = False,
+    workers: int = 1,
 ) -> None:
     if not POR_MUN_DIR.exists():
         print(f"[ERRO] {POR_MUN_DIR} não encontrado.")
@@ -155,16 +192,21 @@ def harmonize(
         if PROGRESS_FILE.exists():
             PROGRESS_FILE.unlink()
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        for fname in TIPO_TO_FILE.values():
+            stale = OUTPUT_DIR / fname
+            if stale.exists():
+                print(f"  Removendo GPKG anterior para evitar duplicação: {fname}")
+                stale.unlink()
 
     written: set[str] = set()
     if resume and not dry_run:
         for tipo, fname in TIPO_TO_FILE.items():
-            out_path = OUTPUT_DIR / fname
-            if out_path.exists() and progress[tipo]:
+            if (OUTPUT_DIR / fname).exists() and progress[tipo]:
                 written.add(fname)
 
     counts = {tipo: {"ok": 0, "skip": 0, "err": 0} for tipo in TIPOS}
     interrupted = False
+    t_total = time.perf_counter()
 
     try:
         for tipo in TIPOS:
@@ -172,64 +214,80 @@ def harmonize(
             if limit:
                 gpkg_paths = gpkg_paths[:limit]
 
-            total    = len(gpkg_paths)
+            total     = len(gpkg_paths)
             out_fname = TIPO_TO_FILE[tipo]
             out_path  = OUTPUT_DIR / out_fname
-            print(f"\n[{tipo.upper()}] {total} municípios encontrados")
+            print(f"\n[{tipo.upper()}] {total} municípios encontrados | workers={workers}")
 
-            for i, gpkg_path in enumerate(gpkg_paths, 1):
-                stem   = gpkg_path.stem      # ex: "3550308_inundacao"
-                cd_mun = stem.split("_")[0]
-
-                if resume and cd_mun in progress[tipo]:
+            # Filtra já processados e monta tasks
+            tasks = []
+            for p in gpkg_paths:
+                mun_id = _mun_id_from_stem(p.stem)
+                if resume and mun_id in progress[tipo]:
                     counts[tipo]["skip"] += 1
                     continue
+                tasks.append({
+                    "gpkg_path": str(p),
+                    "mun_id":    mun_id,
+                    "display":   p.parent.name,
+                })
 
-                print(f"  [{i:>4}/{total}] {gpkg_path.parent.name}", end=" ", flush=True)
+            n_tasks = len(tasks)
+            print(f"  {n_tasks} municípios a processar, {counts[tipo]['skip']} já concluídos.")
 
-                if dry_run:
-                    print("[DRY RUN]")
-                    counts[tipo]["ok"] += 1
-                    continue
+            if dry_run:
+                counts[tipo]["ok"] += n_tasks
+                continue
+            if not tasks:
+                continue
 
-                try:
-                    gdf = gpd.read_file(gpkg_path, layer="suscetibilidade")
-                except Exception as e:
-                    print(f"✗ leitura: {e}")
+            def _write_result(res: dict, idx: int) -> None:
+                elapsed = res.get("elapsed", 0)
+                status_prefix = f"  [{idx:>4}/{n_tasks}] {res['display']}"
+                if res["error"]:
+                    print(f"{status_prefix}  ✗ {res['error']}  [{elapsed:.1f}s]")
                     counts[tipo]["err"] += 1
-                    continue
-
-                if gdf is None or gdf.empty:
-                    print("✗ vazio")
-                    counts[tipo]["err"] += 1
-                    continue
-
-                gdf = _simplify(gdf)
-                if gdf.empty:
-                    print("✗ vazio após simplificação")
-                    counts[tipo]["err"] += 1
-                    continue
-
+                    return
                 mode = "w" if out_fname not in written else "a"
                 try:
-                    gdf.to_file(out_path, driver="GPKG", layer="suscetibilidade", mode=mode)
+                    res["gdf"].to_file(out_path, driver="GPKG", layer="suscetibilidade", mode=mode)
                     written.add(out_fname)
-                    progress[tipo].add(cd_mun)
+                    progress[tipo].add(res["mun_id"])
                     _save_progress(progress)
-                    print(f"✓ {len(gdf)} feições")
+                    print(f"{status_prefix}  ✓ {len(res['gdf'])} feições  [{elapsed:.1f}s]")
                     counts[tipo]["ok"] += 1
                 except Exception as e:
-                    print(f"✗ escrita: {e}")
+                    print(f"{status_prefix}  ✗ escrita: {e}  [{elapsed:.1f}s]")
                     counts[tipo]["err"] += 1
+
+            if workers == 1:
+                for i, task in enumerate(tasks, 1):
+                    _write_result(_simplify_worker(task), i)
+            else:
+                with ProcessPoolExecutor(max_workers=workers) as executor:
+                    futures = {executor.submit(_simplify_worker, t): t for t in tasks}
+                    completed = 0
+                    for future in as_completed(futures):
+                        completed += 1
+                        try:
+                            res = future.result()
+                        except Exception as exc:
+                            task = futures[future]
+                            print(f"  [{completed:>4}/{n_tasks}] {task['display']}  ✗ ERRO: {exc}")
+                            counts[tipo]["err"] += 1
+                            continue
+                        _write_result(res, completed)
 
     except KeyboardInterrupt:
         interrupted = True
         print(f"\n[INTERROMPIDO] Ctrl+C")
         print("  Rode com --resume para continuar.")
+        print("  Se suspeitar de duplicação, use --rebuild-progress para reconciliar antes do resume.")
 
+    total_elapsed = time.perf_counter() - t_total
     print(f"\n{'═'*60}")
     status = "INTERROMPIDO" if interrupted else "HARMONIZAÇÃO CONCLUÍDA"
-    print(f"{status}{' (DRY RUN)' if dry_run else ''}")
+    print(f"{status}{' (DRY RUN)' if dry_run else ''}  [{total_elapsed:.0f}s total]")
     for tipo, c in counts.items():
         out = OUTPUT_DIR / TIPO_TO_FILE[tipo] if not dry_run else "(não escrito)"
         print(f"  {tipo:12}  ok: {c['ok']:4}  skip: {c['skip']:4}  erros: {c['err']:4}  → {out}")
@@ -254,6 +312,8 @@ def main() -> None:
                         help="Continua do ponto onde parou (lê 03_progress.json)")
     parser.add_argument("--rebuild-progress", action="store_true",
                         help="Reconstrói 03_progress.json lendo os GPKGs existentes, depois sai")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="Processos paralelos para leitura+simplificação (padrão: 1, recomendado: 4)")
 
     args = parser.parse_args()
 
@@ -273,6 +333,7 @@ def main() -> None:
         limit=args.limit,
         dry_run=args.dry_run,
         resume=args.resume,
+        workers=args.workers,
     )
 
 
