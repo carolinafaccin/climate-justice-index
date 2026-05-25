@@ -218,3 +218,4 @@ logs/
 .claude/
 manuscript/
 .DS_Store
+.vscode/
