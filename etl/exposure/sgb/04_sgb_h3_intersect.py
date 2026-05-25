@@ -2,7 +2,7 @@
 """
 SGB — Interseção com Grade H3 res9
 ====================================
-Carrega os GeoPackages harmonizados (02_sgb_mass_br.gpkg e 02_sgb_floods_br.gpkg),
+Carrega os GeoPackages harmonizados (03_sgb_mass_br.gpkg e 03_sgb_floods_br.gpkg),
 intersecta com a grade H3 res9 por estado, e calcula a fração de área em classes
 Alta/Muito Alta (4–5) por hexágono.
 
@@ -22,11 +22,11 @@ Colunas de saída:
   n_records          — número de feições SGB que intersectam o hexágono
 
 USO:
-  python 03_sgb_h3_intersect.py                     # ambos os tipos
-  python 03_sgb_h3_intersect.py --tipo massa        # só movimentos de massa
-  python 03_sgb_h3_intersect.py --tipo inundacao    # só inundações
-  python 03_sgb_h3_intersect.py --state SP,RJ       # filtra estados (teste)
-  python 03_sgb_h3_intersect.py --dry-run           # não escreve saída
+  python 04_sgb_h3_intersect.py                     # ambos os tipos
+  python 04_sgb_h3_intersect.py --tipo massa        # só movimentos de massa
+  python 04_sgb_h3_intersect.py --tipo inundacao    # só inundações
+  python 04_sgb_h3_intersect.py --state SP,RJ       # filtra estados (teste)
+  python 04_sgb_h3_intersect.py --dry-run           # não escreve saída
 """
 
 import json
@@ -62,8 +62,8 @@ INVENTORY_PATH = _DATA_DIR / "inputs/raw/sgb/01_sgb_inventory.csv"
 OUTPUT_DIR     = _DATA_DIR / "inputs/clean"
 
 GPKG_FILES = {
-    "massa":     HARMONIZED_DIR / "02_sgb_mass_br.gpkg",
-    "inundacao": HARMONIZED_DIR / "02_sgb_floods_br.gpkg",
+    "massa":     HARMONIZED_DIR / "03_sgb_mass_br.gpkg",
+    "inundacao": HARMONIZED_DIR / "03_sgb_floods_br.gpkg",
 }
 OUTPUT_FILES = {
     "massa":     OUTPUT_DIR / "br_h3_sgb_massa.parquet",
@@ -291,7 +291,7 @@ def process_tipo(
     gpkg_path = GPKG_FILES[tipo]
     if not gpkg_path.exists():
         print(f"\n[ERRO] GeoPackage não encontrado: {gpkg_path}")
-        print("       Execute 02_sgb_harmonize.py primeiro.")
+        print("       Execute 02_sgb_extract.py e 03_sgb_harmonize.py primeiro.")
         return
 
     print(f"\n{'═' * 60}")

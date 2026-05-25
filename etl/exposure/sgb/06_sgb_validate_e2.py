@@ -16,7 +16,7 @@ Análises:
 
 Inputs (via cfg + config.local.json):
   cfg.FILES_H3["e2"]              — br_h3_e2_inundacoes.parquet
-  br_h3_sgb_inundacoes.parquet   — output do 03_sgb_h3_intersect.py
+  br_h3_sgb_inundacoes.parquet   — output do 04_sgb_h3_intersect.py
 
 Outputs em cfg.DIAGNOSE_DIR:
   diagnostic_e2_validation_<timestamp>.txt
@@ -115,7 +115,7 @@ def load_data(sgb_ref_thresh: float, min_coverage: float) -> pd.DataFrame:
     if not SGB_INUND_PATH.exists():
         raise FileNotFoundError(
             f"SGB inundações parquet não encontrado: {SGB_INUND_PATH}\n"
-            "Execute 03_sgb_h3_intersect.py --tipo inundacao primeiro."
+            "Execute 04_sgb_h3_intersect.py --tipo inundacao primeiro."
         )
     if not E2_PATH.exists():
         raise FileNotFoundError(

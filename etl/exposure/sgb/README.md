@@ -116,29 +116,30 @@ com as correções aplicadas.
 
 ---
 
-## Script 02 — Harmonização
+## Script 02 — Extração por Município
 
-**O que faz:** Lê o inventário, extrai cada shapefile/GPKG/TIF do ZIP, aplica o mapeamento
-de classe, e consolida tudo em dois GeoPackages nacionais.
+**O que faz:** Para cada ZIP, extrai os arquivos brutos e gera um GeoPackage harmonizado
+por município (CRS padronizado, make_valid, classe mapeada). Sem simplificação de geometria.
 
 **Pré-requisito:** `01_sgb_mapping.json` revisado (sem valores `-1` não intencionais).
 
-**Outputs em `harmonized/`:**
-- `02_sgb_floods_br.gpkg`
-- `02_sgb_mass_br.gpkg`
+**Outputs em `por_municipio/{UF}/{cd_mun}_{nm}/`:**
+- `raw/` — arquivos brutos extraídos do ZIP
+- `{cd_mun}_inundacao.gpkg` — harmonizado, sem simplificação
+- `{cd_mun}_massa.gpkg` — harmonizado, sem simplificação
 
 ```bash
 # Teste sem escrever nada (recomendado na primeira vez)
-python etl/exposure/sgb/02_sgb_harmonize.py --dry-run
+python etl/exposure/sgb/02_sgb_extract.py --dry-run
 
 # Processa tudo
-python etl/exposure/sgb/02_sgb_harmonize.py
+python etl/exposure/sgb/02_sgb_extract.py
 
 # Filtra por estado (para testes)
-python etl/exposure/sgb/02_sgb_harmonize.py --state SE,BA
+python etl/exposure/sgb/02_sgb_extract.py --state SE,BA
 
 # Limita a N ZIPs (para teste rápido)
-python etl/exposure/sgb/02_sgb_harmonize.py --limit 10
+python etl/exposure/sgb/02_sgb_extract.py --limit 10
 ```
 
 **Se aparecerem avisos de classe não mapeada:**
@@ -148,13 +149,37 @@ python etl/exposure/sgb/02_sgb_harmonize.py --limit 10
 
 ---
 
-## Script 03 — Interseção H3
+## Script 03 — Harmonização e Consolidação Nacional
+
+**O que faz:** Lê os GPKGs por município gerados pelo 02, aplica simplificação de 5 m
+(EPSG:5880) e consolida em dois GeoPackages nacionais.
+
+**Pré-requisito:** `por_municipio/` populado pelo script 02.
+
+**Outputs em `harmonized/`:**
+- `03_sgb_floods_br.gpkg`
+- `03_sgb_mass_br.gpkg`
+
+```bash
+# Processa tudo
+python etl/exposure/sgb/03_sgb_harmonize.py
+
+# Filtra por estado (para testes)
+python etl/exposure/sgb/03_sgb_harmonize.py --state SE,BA
+
+# Continua do ponto onde parou
+python etl/exposure/sgb/03_sgb_harmonize.py --resume
+```
+
+---
+
+## Script 04 — Interseção H3
 
 **O que faz:** Para cada GeoPackage harmonizado, intersecta os polígonos SGB com a grade H3
 res9, calculando a fração de área em classes Alta/Muito Alta (4–5) por hexágono. Processa
 um estado por vez para manter uso de memória baixo.
 
-**Pré-requisito:** `02_sgb_floods_br.gpkg` e `02_sgb_mass_br.gpkg` em `harmonized/`.
+**Pré-requisito:** `03_sgb_floods_br.gpkg` e `03_sgb_mass_br.gpkg` em `harmonized/`.
 
 **Outputs em `data/inputs/clean/`:**
 - `br_h3_sgb_massa.parquet`
@@ -162,26 +187,26 @@ um estado por vez para manter uso de memória baixo.
 
 ```bash
 # Processa ambos os tipos
-python etl/exposure/sgb/03_sgb_h3_intersect.py
+python etl/exposure/sgb/04_sgb_h3_intersect.py
 
 # Testa com um estado
-python etl/exposure/sgb/03_sgb_h3_intersect.py --state SP
+python etl/exposure/sgb/04_sgb_h3_intersect.py --state SP
 
 # Só movimentos de massa
-python etl/exposure/sgb/03_sgb_h3_intersect.py --tipo massa
+python etl/exposure/sgb/04_sgb_h3_intersect.py --tipo massa
 
 # Simula sem escrever saída
-python etl/exposure/sgb/03_sgb_h3_intersect.py --dry-run
+python etl/exposure/sgb/04_sgb_h3_intersect.py --dry-run
 ```
 
 **Colunas principais de saída:**
-- `sgb_alta_mta_frac` — fração da área SGB mapeada em classes 4–5 (usado em 04 e 05)
+- `sgb_alta_mta_frac` — fração da área SGB mapeada em classes 4–5 (usado em 05 e 06)
 - `sgb_coverage_frac` — fração do hexágono coberta por dados SGB (filtrar `>= 0.5` para análise)
 - `sgb_max_class` — classe máxima no hexágono
 
 ---
 
-## Script 04 — Calibração E1
+## Script 05 — Calibração E1
 
 **O que faz:** Varre thresholds de `e1_des_abs` (= lhasa_high_frac) de 0.0 a 1.0 e
 compara contra a referência SGB `sgb_alta_mta_frac > 0.3`. Calcula precision/recall/F1
@@ -191,10 +216,10 @@ analisa F1 por macrorregião.
 **Pré-requisito:** parquet E1 (`br_h3_e1_deslizamentos.parquet`) + `br_h3_sgb_massa.parquet`
 
 ```bash
-python etl/exposure/sgb/04_sgb_calibrate_e1.py
+python etl/exposure/sgb/05_sgb_calibrate_e1.py
 
 # Ajusta thresholds de referência (padrão: sgb-ref=0.3, min-coverage=0.5)
-python etl/exposure/sgb/04_sgb_calibrate_e1.py --sgb-ref 0.2 --min-coverage 0.3
+python etl/exposure/sgb/05_sgb_calibrate_e1.py --sgb-ref 0.2 --min-coverage 0.3
 ```
 
 **O que observar no diagnóstico:**
@@ -204,7 +229,7 @@ python etl/exposure/sgb/04_sgb_calibrate_e1.py --sgb-ref 0.2 --min-coverage 0.3
 
 ---
 
-## Script 05 — Validação E2
+## Script 06 — Validação E2
 
 **O que faz:** Varre thresholds de `e2_inu_abs` (flood_score), encontra o ótimo, e
 analisa os falsos negativos: onde o SGB aponta alta suscetibilidade a inundação mas
@@ -213,9 +238,9 @@ o E2 não detecta. Reporta distribuição por macrorregião e classe SGB máxima
 **Pré-requisito:** parquet E2 (`br_h3_e2_inundacoes.parquet`) + `br_h3_sgb_inundacoes.parquet`
 
 ```bash
-python etl/exposure/sgb/05_sgb_validate_e2.py
+python etl/exposure/sgb/06_sgb_validate_e2.py
 
-python etl/exposure/sgb/05_sgb_validate_e2.py --sgb-ref 0.2 --min-coverage 0.3
+python etl/exposure/sgb/06_sgb_validate_e2.py --sgb-ref 0.2 --min-coverage 0.3
 ```
 
 **O que observar no diagnóstico:**
@@ -241,17 +266,23 @@ python etl/exposure/sgb/05_sgb_validate_e2.py --sgb-ref 0.2 --min-coverage 0.3
   se ZIPs com erro → 00 redownload → 01 (retoma automaticamente)
   se classificação errada → editar 01_sgb_inventory.csv → rodar 01 novamente
 
-02 harmonize --dry-run → harmonize
+02 extract --dry-run → extract
   ↓
-  harmonized/02_sgb_floods_br.gpkg
-  harmonized/02_sgb_mass_br.gpkg
+  por_municipio/{UF}/{cd_mun}_{nm}/raw/
+  por_municipio/{UF}/{cd_mun}_{nm}/{cd_mun}_inundacao.gpkg
+  por_municipio/{UF}/{cd_mun}_{nm}/{cd_mun}_massa.gpkg
 
-03 h3_intersect
+03 harmonize --dry-run → harmonize
+  ↓
+  harmonized/03_sgb_floods_br.gpkg
+  harmonized/03_sgb_mass_br.gpkg
+
+04 h3_intersect
   ↓
   clean/br_h3_sgb_massa.parquet
   clean/br_h3_sgb_inundacoes.parquet
 
-04 calibrate_e1 + 05 validate_e2   (independentes entre si, requerem 03)
+05 calibrate_e1 + 06 validate_e2   (independentes entre si, requerem 04)
   ↓
   diagnósticos TXT/CSV → ajustes em e1/e2 conforme plano.md
 ```
@@ -263,15 +294,21 @@ python etl/exposure/sgb/05_sgb_validate_e2.py --sgb-ref 0.2 --min-coverage 0.3
 ```
 data/inputs/raw/sgb/
 ├── raw_zips/                        # ZIPs baixados (um por município)
-├── harmonized/
-│   ├── 02_sgb_floods_br.gpkg        # output do 02
-│   └── 02_sgb_mass_br.gpkg          # output do 02
+├── por_municipio/                   # output do 02
+│   └── {UF}/
+│       └── {cd_mun}_{nm}/
+│           ├── raw/                 # arquivos brutos extraídos do ZIP
+│           ├── {cd_mun}_inundacao.gpkg
+│           └── {cd_mun}_massa.gpkg
+├── harmonized/                      # output do 03
+│   ├── 03_sgb_floods_br.gpkg
+│   └── 03_sgb_mass_br.gpkg
 ├── 00_sgb_manifest.csv              # criado pelo 00
 ├── 01_sgb_inventory.csv             # criado pelo 01 — um registro por arquivo; col. revisar
 ├── 01_sgb_coverage.csv              # criado pelo 01 — status por ZIP (status_zip)
 └── 01_sgb_mapping.json              # criado pelo 01 — editar manualmente
 
 data/inputs/clean/
-├── br_h3_sgb_massa.parquet          # output do 03
-└── br_h3_sgb_inundacoes.parquet     # output do 03
+├── br_h3_sgb_massa.parquet          # output do 04
+└── br_h3_sgb_inundacoes.parquet     # output do 04
 ```

@@ -17,7 +17,7 @@ Análises:
 
 Inputs (via cfg + config.local.json):
   cfg.FILES_H3["e1"]         — br_h3_e1_deslizamentos.parquet
-  br_h3_sgb_massa.parquet    — output do 03_sgb_h3_intersect.py
+  br_h3_sgb_massa.parquet    — output do 04_sgb_h3_intersect.py
   GEE CSVs de LHASA          — para lhasa_mean (opcional)
 
 Outputs em cfg.DIAGNOSE_DIR:
@@ -115,7 +115,7 @@ def load_data(sgb_ref_thresh: float, min_coverage: float) -> pd.DataFrame:
     if not SGB_MASSA_PATH.exists():
         raise FileNotFoundError(
             f"SGB massa parquet não encontrado: {SGB_MASSA_PATH}\n"
-            "Execute 03_sgb_h3_intersect.py primeiro."
+            "Execute 04_sgb_h3_intersect.py primeiro."
         )
     if not E1_PATH.exists():
         raise FileNotFoundError(
