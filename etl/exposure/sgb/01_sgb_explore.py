@@ -44,6 +44,7 @@ import sys
 import argparse
 import warnings
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 import geopandas as gpd
 
@@ -869,6 +870,8 @@ def main() -> None:
                         help="Ignora inventário existente e reprocessa tudo do zero")
     parser.add_argument("--verify-zips", action="store_true",
                         help="Verifica integridade CRC de todos os ZIPs e sai (lento)")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="Processos paralelos para leitura de ZIPs (padrão: 1, recomendado: 4)")
     args = parser.parse_args()
 
     if not DOWNLOAD_DIR.exists():
@@ -936,6 +939,35 @@ def main() -> None:
 
     mun_index = load_manifest()  # {filename: {cd_estado, nm_estado, nm_municipio, ...}}
 
+    def _enrich_and_print(recs: list[dict], zip_name: str, global_i: int) -> None:
+        """Enriquece registros com metadados do manifest e imprime status."""
+        mun = mun_index.get(zip_name, {})
+        for r in recs:
+            r.setdefault("cd_estado",    mun.get("cd_estado",    ""))
+            r.setdefault("nm_estado",    mun.get("nm_estado",    ""))
+            r.setdefault("nm_municipio", mun.get("nm_municipio", ""))
+
+        counts: dict[str, int] = defaultdict(int)
+        for r in recs:
+            counts[r["tipo"]] += 1
+
+        label = zip_name if len(zip_name) <= 52 else zip_name[:49] + "…"
+        print(f"  [{global_i:>3}/{n_total}]  {label:<53}", end="")
+        if counts.get("erro"):
+            err_note = next(r["notes"] for r in recs if r["tipo"] == "erro")
+            print(f"  ERRO  {err_note}")
+        else:
+            parts = []
+            for tipo in ("inundacao", "massa"):
+                n = counts.get(tipo, 0)
+                parts.append(f"{'✓' if n else '✗'}{tipo[:5]}{'×'+str(n) if n > 1 else ''}")
+            if counts.get("outros"):
+                parts.append(f"+{counts['outros']} outros")
+            if counts.get("vazio"):
+                parts.append("vazio")
+            warn = "  ⚠" if not counts.get("inundacao") or not counts.get("massa") else ""
+            print("  " + "  ".join(parts) + warn)
+
     interrupted = False
     try:
         with open(INVENTORY_PATH, csv_mode, encoding="utf-8", newline="") as csv_out:
@@ -943,45 +975,36 @@ def main() -> None:
             if write_header:
                 writer.writeheader()
 
-            for i, zip_path in enumerate(zips_to_process, 1):
-                global_i = n_done + i
-                name = zip_path.name
-                if len(name) > 52:
-                    name = name[:49] + "…"
-                print(f"  [{global_i:>3}/{n_total}]  {name:<53}", end="", flush=True)
+            if args.workers == 1:
+                # ── Serial (comportamento original) ───────────────────────────
+                for i, zip_path in enumerate(zips_to_process, 1):
+                    recs = scan_zip(zip_path)
+                    _enrich_and_print(recs, zip_path.name, n_done + i)
+                    writer.writerows(recs)
+                    csv_out.flush()
+                    all_records.extend(recs)
+            else:
+                # ── Paralelo: workers fazem I/O; main thread escreve no CSV ──
+                print(f"  (modo paralelo: {args.workers} workers)")
+                futures = {}
+                with ProcessPoolExecutor(max_workers=args.workers) as executor:
+                    for zip_path in zips_to_process:
+                        futures[executor.submit(scan_zip, zip_path)] = zip_path
 
-                recs = scan_zip(zip_path)
-
-                # Enriquece cada registro com metadados do município (do manifest)
-                mun = mun_index.get(zip_path.name, {})
-                for r in recs:
-                    r.setdefault("cd_estado",    mun.get("cd_estado",    ""))
-                    r.setdefault("nm_estado",    mun.get("nm_estado",    ""))
-                    r.setdefault("nm_municipio", mun.get("nm_municipio", ""))
-
-                counts: dict[str, int] = defaultdict(int)
-                for r in recs:
-                    counts[r["tipo"]] += 1
-
-                if counts.get("erro"):
-                    err_note = next(r["notes"] for r in recs if r["tipo"] == "erro")
-                    print(f"  ERRO  {err_note}")
-                else:
-                    parts = []
-                    for tipo in ("inundacao", "massa"):
-                        n = counts.get(tipo, 0)
-                        parts.append(f"{'✓' if n else '✗'}{tipo[:5]}{'×'+str(n) if n > 1 else ''}")
-                    if counts.get("outros"):
-                        parts.append(f"+{counts['outros']} outros")
-                    if counts.get("vazio"):
-                        parts.append("vazio")
-                    warn = "  ⚠" if not counts.get("inundacao") or not counts.get("massa") else ""
-                    print("  " + "  ".join(parts) + warn)
-
-                # Grava imediatamente e força flush para não perder em caso de Ctrl+C
-                writer.writerows(recs)
-                csv_out.flush()
-                all_records.extend(recs)
+                    completed = 0
+                    for future in as_completed(futures):
+                        completed += 1
+                        zip_path = futures[future]
+                        try:
+                            recs = future.result()
+                        except Exception as exc:
+                            print(f"  [{n_done + completed:>3}/{n_total}]  "
+                                  f"{zip_path.name:<53}  ERRO  {exc}")
+                            continue
+                        _enrich_and_print(recs, zip_path.name, n_done + completed)
+                        writer.writerows(recs)
+                        csv_out.flush()
+                        all_records.extend(recs)
 
     except KeyboardInterrupt:
         interrupted = True
