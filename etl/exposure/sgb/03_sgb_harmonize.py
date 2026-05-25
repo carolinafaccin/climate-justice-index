@@ -35,10 +35,12 @@ import sys
 import argparse
 import sqlite3
 import time
+import warnings
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import geopandas as gpd
+from shapely.geometry import MultiPolygon, Polygon
 
 # ── Paths via config ───────────────────────────────────────────────────────────
 def _load_data_dir() -> Path:
@@ -56,6 +58,10 @@ _DATA_DIR     = _load_data_dir()
 POR_MUN_DIR   = _DATA_DIR / "inputs/raw/sgb/por_municipio"
 OUTPUT_DIR    = _DATA_DIR / "inputs/raw/sgb/harmonized"
 PROGRESS_FILE = OUTPUT_DIR / "03_progress.json"
+FAILURES_PATH = _DATA_DIR / "inputs/raw/sgb/03_failures.csv"
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _pipeline_log import log_failure, reset_failures  # noqa: E402
 
 TARGET_CRS  = "EPSG:4674"   # SIRGAS 2000 geográfico
 CRS_PROJ    = "EPSG:5880"   # SIRGAS 2000 / Brazil Polyconic — para simplificação em metros
@@ -138,6 +144,7 @@ def _mun_id_from_stem(stem: str) -> str:
 
 def _simplify_worker(task: dict) -> dict:
     """Lê e simplifica um GPKG municipal. Chamado por ProcessPoolExecutor."""
+    warnings.filterwarnings("ignore")  # suprime RuntimeWarnings do pyogrio/GDAL neste processo
     gpkg_path = Path(task["gpkg_path"])
     mun_id    = task["mun_id"]
     display   = task["display"]
@@ -151,6 +158,9 @@ def _simplify_worker(task: dict) -> dict:
         if gdf.empty:
             return {"mun_id": mun_id, "display": display, "gdf": None,
                     "error": "vazio após simplificação", "elapsed": time.perf_counter() - t0}
+        gdf.geometry = gdf.geometry.apply(
+            lambda g: MultiPolygon([g]) if isinstance(g, Polygon) else g
+        )
         return {"mun_id": mun_id, "display": display, "gdf": gdf, "error": None,
                 "elapsed": time.perf_counter() - t0}
     except Exception as e:
@@ -160,6 +170,9 @@ def _simplify_worker(task: dict) -> dict:
 
 def _simplify(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Simplifica geometrias a SIMPLIFY_M metros, reprojetando para CRS_PROJ."""
+    if gdf.crs is None:
+        # arquivos SGB sem CRS definido assumem SIRGAS 2000 (padrão do SGB)
+        gdf = gdf.set_crs(TARGET_CRS)
     gdf = gdf.to_crs(CRS_PROJ)
     gdf.geometry = gdf.geometry.simplify(SIMPLIFY_M, preserve_topology=True)
     gdf.geometry = gdf.geometry.make_valid()
@@ -191,6 +204,7 @@ def harmonize(
     elif not dry_run:
         if PROGRESS_FILE.exists():
             PROGRESS_FILE.unlink()
+        reset_failures(FAILURES_PATH)
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         for fname in TIPO_TO_FILE.values():
             stale = OUTPUT_DIR / fname
@@ -247,10 +261,15 @@ def harmonize(
                 if res["error"]:
                     print(f"{status_prefix}  ✗ {res['error']}  [{elapsed:.1f}s]")
                     counts[tipo]["err"] += 1
+                    log_failure(FAILURES_PATH, stage="harmonize", tipo=tipo,
+                                reason=res["error"], mun_id=res["mun_id"],
+                                sigla_uf=res["display"])
                     return
                 mode = "w" if out_fname not in written else "a"
                 try:
-                    res["gdf"].to_file(out_path, driver="GPKG", layer="suscetibilidade", mode=mode)
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        res["gdf"].to_file(out_path, driver="GPKG", layer="suscetibilidade", mode=mode)
                     written.add(out_fname)
                     progress[tipo].add(res["mun_id"])
                     _save_progress(progress)
@@ -259,6 +278,9 @@ def harmonize(
                 except Exception as e:
                     print(f"{status_prefix}  ✗ escrita: {e}  [{elapsed:.1f}s]")
                     counts[tipo]["err"] += 1
+                    log_failure(FAILURES_PATH, stage="harmonize", tipo=tipo,
+                                reason=f"escrita: {e}", mun_id=res["mun_id"],
+                                sigla_uf=res["display"])
 
             if workers == 1:
                 for i, task in enumerate(tasks, 1):

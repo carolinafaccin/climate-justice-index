@@ -10,17 +10,22 @@ Referência positiva SGB: sgb_alta_mta_frac > 0.3
 Filtro de cobertura:   sgb_coverage_frac >= 0.5
 
 Análises:
-  1. Sweep de threshold em e2_inu_abs (flood_score)
-  2. Análise de falsos negativos: onde o E2 não captura o que o SGB aponta
-  3. F1 por macrorregião no threshold ótimo
+  1. Cobertura SGB por macrorregião (antes e depois do filtro de cobertura ≥50%)
+  2. Sweep de threshold em e2_inu_abs (flood_score) — hexágonos pós-filtro
+  3. Análise de falsos negativos: onde o E2 não captura o que o SGB aponta
+  4. F1 por macrorregião no threshold ótimo
+  5. Distribuição nacional do flood_score por macrorregião (GEE — todos os hexágonos)
 
 Inputs (via cfg + config.local.json):
   cfg.FILES_H3["e2"]              — br_h3_e2_inundacoes.parquet
   br_h3_sgb_inundacoes.parquet   — output do 04_sgb_h3_intersect.py
+  GEE CSVs de E2                 — para análise descritiva nacional
 
 Outputs em cfg.DIAGNOSE_DIR:
   diagnostic_e2_validation_<timestamp>.txt
-  diagnostic_e2_validation_<timestamp>.csv   — sweep completo por threshold
+  diagnostic_e2_validation_<timestamp>.csv      — sweep completo por threshold
+  diagnostic_e2_fn_hexagons_<timestamp>.csv     — hexágonos falsos negativos
+                                                   (insumo para análise de HAND no GEE)
 
 USO:
   python 06_sgb_validate_e2.py
@@ -52,6 +57,7 @@ def _load_data_dir() -> Path:
 _DATA_DIR           = _load_data_dir()
 SGB_INUND_PATH      = _DATA_DIR / "inputs/clean/br_h3_sgb_inundacoes.parquet"
 E2_PATH             = cfg.FILES_H3["e2"]
+GEE_DIR             = cfg.RAW_DIR / cfg.INDICATORS["e2"]["source"]["dir"]
 DIAGNOSE_DIR        = cfg.DIAGNOSE_DIR
 
 E2_ABS_COL = "e2_inu_abs"   # = flood_score (HAND × JRC), range 0–1
@@ -65,6 +71,17 @@ MACRORREGIOES = {
     "CO": {"DF", "GO", "MS", "MT"},
     "SE": {"ES", "MG", "RJ", "SP"},
     "S":  {"PR", "RS", "SC"},
+}
+
+# Código IBGE (cd_uf) → sigla. Usado para harmonizar CSVs GEE (numéricos)
+# com o parquet SGB (siglas).
+IBGE_TO_UF = {
+    11: "RO", 12: "AC", 13: "AM", 14: "RR", 15: "PA", 16: "AP", 17: "TO",
+    21: "MA", 22: "PI", 23: "CE", 24: "RN", 25: "PB", 26: "PE", 27: "AL",
+    28: "SE", 29: "BA",
+    31: "MG", 32: "ES", 33: "RJ", 35: "SP",
+    41: "PR", 42: "SC", 43: "RS",
+    50: "MS", 51: "MT", 52: "GO", 53: "DF",
 }
 
 
@@ -110,7 +127,7 @@ def threshold_sweep(
 # ══════════════════════════════════════════════════════════════════════════════
 
 def load_data(sgb_ref_thresh: float, min_coverage: float) -> pd.DataFrame:
-    print(f"\n1/3 — Carregando dados")
+    print(f"\n1/4 — Carregando dados")
 
     if not SGB_INUND_PATH.exists():
         raise FileNotFoundError(
@@ -129,15 +146,24 @@ def load_data(sgb_ref_thresh: float, min_coverage: float) -> pd.DataFrame:
     print(f"   SGB inundações: {len(sgb):,} hexágonos com cobertura SGB")
     print(f"   E2:             {len(e2):,} hexágonos (grade nacional)")
 
-    df = sgb.merge(e2, on="h3_id", how="inner")
-    print(f"   Após join:      {len(df):,} hexágonos")
+    df_all = sgb.merge(e2, on="h3_id", how="inner")
+    df_all["macro"] = df_all["cd_estado"].map(_macrorregiao)
+    print(f"   Após join:      {len(df_all):,} hexágonos")
 
-    df = df[df["sgb_coverage_frac"] >= min_coverage].copy()
-    print(f"   Cobertura SGB ≥ {min_coverage:.0%}: {len(df):,} hexágonos")
+    # Mostra cobertura SGB por macrorregião ANTES do filtro
+    print(f"\n   Cobertura SGB por macrorregião (antes do filtro ≥{min_coverage:.0%}):")
+    for macro in sorted(df_all["macro"].unique()):
+        sub = df_all[df_all["macro"] == macro]
+        n_above = (sub["sgb_coverage_frac"] >= min_coverage).sum()
+        cov_med = sub["sgb_coverage_frac"].median()
+        print(f"     {macro:2}  total={len(sub):>6,}  cobertura≥{min_coverage:.0%}: {n_above:>6,} ({n_above/len(sub):.0%})  "
+              f"mediana_cobertura={cov_med:.2f}")
+
+    df = df_all[df_all["sgb_coverage_frac"] >= min_coverage].copy()
+    print(f"\n   Após filtro cobertura SGB ≥ {min_coverage:.0%}: {len(df):,} hexágonos")
 
     df[E2_ABS_COL] = pd.to_numeric(df[E2_ABS_COL], errors="coerce").fillna(0.0)
     df["sgb_ref"]  = df["sgb_alta_mta_frac"] > sgb_ref_thresh
-    df["macro"]    = df["cd_estado"].map(_macrorregiao)
 
     pos = df["sgb_ref"].sum()
     print(f"   Referência SGB positiva (alta suscet.): {pos:,} ({pos/len(df):.1%})")
@@ -149,9 +175,82 @@ def load_data(sgb_ref_thresh: float, min_coverage: float) -> pd.DataFrame:
 # ANÁLISES
 # ══════════════════════════════════════════════════════════════════════════════
 
+def load_gee_national() -> pd.DataFrame | None:
+    """
+    Lê os CSVs GEE de E2 (todos os estados) e retorna DataFrame com
+    h3_id, flood_score, cd_estado, macro. Extrai o código UF do nome do arquivo.
+    Retorna None se não encontrar arquivos.
+    """
+    csvs = sorted(GEE_DIR.glob("*.csv")) if GEE_DIR.exists() else []
+    if not csvs:
+        return None
+
+    parts = []
+    for p in csvs:
+        # Extrai cd_uf (código IBGE numérico) do nome do arquivo:
+        # h3_susc_inund_hand_jrc_v1_uf_43.csv → 43
+        stem_tail = p.stem.split("_")[-1]
+        uf_from_name = IBGE_TO_UF.get(int(stem_tail)) if stem_tail.isdigit() else None
+        try:
+            df = pd.read_csv(p, usecols=lambda c: c in ["h3_id", "flood_score", "cd_uf"])
+            if "cd_uf" in df.columns:
+                df["cd_estado"] = pd.to_numeric(df["cd_uf"], errors="coerce").map(IBGE_TO_UF)
+                df = df.drop(columns=["cd_uf"])
+            elif uf_from_name:
+                df["cd_estado"] = uf_from_name
+            else:
+                continue
+            parts.append(df)
+        except Exception:
+            continue
+
+    if not parts:
+        return None
+
+    df_all = pd.concat(parts, ignore_index=True).drop_duplicates("h3_id")
+    df_all["flood_score"] = pd.to_numeric(df_all["flood_score"], errors="coerce").fillna(0.0)
+    df_all["macro"] = df_all["cd_estado"].map(_macrorregiao)
+    return df_all
+
+
+def analyse_national_coverage(df_nat: pd.DataFrame) -> pd.DataFrame:
+    """
+    Análise descritiva da distribuição do flood_score por macrorregião
+    para todos os hexágonos do Brasil (sem referência SGB — descritiva).
+    Ajuda a entender se o padrão de score=0 é exclusivo do S/SE ou nacional.
+    """
+    print(f"\n4/4 — Distribuição nacional do flood_score por macrorregião (GEE — descritiva)")
+    print(f"   Total de hexágonos GEE: {len(df_nat):,}")
+    print(f"   (Sem referência SGB — comparação entre regiões, não validação)\n")
+
+    rows = []
+    for macro in sorted(df_nat["macro"].unique()):
+        sub   = df_nat[df_nat["macro"] == macro]
+        n     = len(sub)
+        n_zero     = (sub["flood_score"] == 0).sum()
+        n_low      = ((sub["flood_score"] > 0) & (sub["flood_score"] <= 0.33)).sum()
+        n_mid      = ((sub["flood_score"] > 0.33) & (sub["flood_score"] <= 0.66)).sum()
+        n_high     = (sub["flood_score"] > 0.66).sum()
+        rows.append({
+            "macro": macro, "n_total": n,
+            "score_0_pct":    n_zero / n,
+            "score_low_pct":  n_low  / n,
+            "score_mid_pct":  n_mid  / n,
+            "score_high_pct": n_high / n,
+        })
+        print(f"   {macro:2}  total={n:>7,}  "
+              f"score=0: {n_zero/n:.0%}  "
+              f"baixo(0-0.33]: {n_low/n:.0%}  "
+              f"médio(0.33-0.66]: {n_mid/n:.0%}  "
+              f"alto(>0.66): {n_high/n:.0%}")
+
+    print()
+    return pd.DataFrame(rows)
+
+
 def analyse_primary(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """Sweep de threshold em e2_inu_abs (flood_score)."""
-    print(f"\n2/3 — Validação (e2_inu_abs = flood_score)")
+    print(f"\n2/4 — Validação (e2_inu_abs = flood_score)")
 
     # Métricas com threshold atual para referência
     m_current = compute_metrics(df["sgb_ref"], df[E2_ABS_COL] > CURRENT_E2_THRESHOLD)
@@ -182,12 +281,13 @@ def analyse_primary(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
                    "m_current": m_current}
 
 
-def analyse_false_negatives(df: pd.DataFrame, best_threshold: float) -> pd.DataFrame:
+def analyse_false_negatives(df: pd.DataFrame, best_threshold: float) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Analisa falsos negativos: hexágonos onde o SGB indica alta suscetibilidade
     a inundações mas o E2 não detecta (flood_score <= threshold).
+    Retorna (macro_fn, fn_raw) — resumo por macrorregião e hexágonos individuais.
     """
-    print(f"\n   Análise de falsos negativos (SGB+ mas E2 ≤ {best_threshold:.3f})")
+    print(f"\n3/4 — Análise de falsos negativos (SGB+ mas E2 ≤ {best_threshold:.3f})")
 
     df["pred"] = df[E2_ABS_COL] > best_threshold
     fn_mask    = df["sgb_ref"] & ~df["pred"]
@@ -197,7 +297,7 @@ def analyse_false_negatives(df: pd.DataFrame, best_threshold: float) -> pd.DataF
           f"({len(fn)/max(df['sgb_ref'].sum(),1):.1%})")
 
     if fn.empty:
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
 
     # Distribuição de flood_score nos FN (quão perto estão do threshold?)
     print("\n   flood_score nos falsos negativos:")
@@ -236,7 +336,10 @@ def analyse_false_negatives(df: pd.DataFrame, best_threshold: float) -> pd.DataF
         label = {5: "Muito Alta", 4: "Alta", 3: "Média", 2: "Baixa", 1: "Muito Baixa"}.get(cls, str(cls))
         print(f"     classe {cls} ({label:12}): {count:,} ({count/len(fn):.1%})")
 
-    return macro_fn
+    fn_raw = fn[["h3_id", "cd_estado", "macro",
+                 "sgb_alta_mta_frac", "sgb_max_class",
+                 "sgb_coverage_frac", E2_ABS_COL]].copy()
+    return macro_fn, fn_raw
 
 
 def analyse_regional(df: pd.DataFrame, best_threshold: float) -> pd.DataFrame:
@@ -263,13 +366,16 @@ def write_diagnostic(
     sweep: pd.DataFrame,
     best: dict,
     macro_fn: pd.DataFrame,
+    fn_raw: pd.DataFrame,
     regional: pd.DataFrame,
+    national_coverage: pd.DataFrame | None,
     sgb_ref_thresh: float,
     min_coverage: float,
     ts: str,
 ) -> None:
     txt_path = DIAGNOSE_DIR / f"diagnostic_e2_validation_{ts}.txt"
     csv_path = DIAGNOSE_DIR / f"diagnostic_e2_validation_{ts}.csv"
+    fn_path  = DIAGNOSE_DIR / f"diagnostic_e2_fn_hexagons_{ts}.csv"
 
     m_current = best.pop("m_current")
     improvement = best["f1"] - m_current["f1"]
@@ -309,20 +415,20 @@ def write_diagnostic(
             fn_zero_pct = (df[df["sgb_ref"] & (df[E2_ABS_COL] == 0)]).__len__() / max(fn_total, 1)
             f.write("--- Análise de falsos negativos ---\n")
             f.write(f"  Total FN: {best['fn']:,} ({best['fn']/max(fn_total,1):.1%} dos casos SGB+)\n")
-            f.write(f"  FN com flood_score=0 (sem sinal HAND+JRC): {fn_zero_pct:.1%}\n\n")
+            f.write(f"  FN com flood_score=0 (sem sinal HAND+JRC): {fn_zero_pct:.1%}\n")
+            f.write(f"  Lista completa exportada em: {fn_path.name}\n\n")
             f.write("  Por macrorregião:\n")
             f.write(macro_fn.to_string(index=False))
             f.write("\n\n")
 
             # Interpretação dos FN
-            if not macro_fn.empty:
-                worst_macro = macro_fn.loc[macro_fn["fn_rate"].idxmax()]
-                high_zero   = macro_fn[macro_fn["e2_zeros"] > 0.7]
-                if not high_zero.empty:
-                    regions = ", ".join(high_zero["macro"].tolist())
-                    f.write(f"  ⚑ Regiões {regions}: >70% dos FN têm flood_score=0 "
-                            f"→ áreas não cobertas pelo JRC ou HAND>6m.\n"
-                            f"    Avaliar ampliar teto HAND em h3_e2_inundacoes_hand_gee_v1.js\n\n")
+            high_zero = macro_fn[macro_fn["e2_zeros"] > 0.7]
+            if not high_zero.empty:
+                regions = ", ".join(high_zero["macro"].tolist())
+                f.write(f"  ⚑ Regiões {regions}: >70% dos FN têm flood_score=0 "
+                        f"→ áreas não cobertas pelo JRC ou HAND>6m.\n"
+                        f"    Próximo passo: usar {fn_path.name} para consultar\n"
+                        f"    os valores brutos de HAND no GEE e definir novo teto.\n\n")
 
         f.write("--- F1 por macrorregião ---\n")
         f.write(regional.to_string(index=False))
@@ -335,11 +441,21 @@ def write_diagnostic(
         else:
             f.write("  ✓ F1 relativamente uniforme entre macrorregiões\n\n")
 
+        if national_coverage is not None:
+            f.write("--- Distribuição nacional do flood_score por macrorregião (GEE — descritiva) ---\n")
+            f.write("  (Sem referência SGB — comparação entre regiões para detectar padrões)\n")
+            f.write(national_coverage.to_string(index=False, float_format="{:.1%}".format))
+            f.write("\n\n")
+
         f.write("--- Sweep completo (top 15 por F1) ---\n")
         f.write(sweep.nlargest(15, "f1").to_string(index=False))
         f.write("\n")
 
     sweep.to_csv(csv_path, index=False, float_format="%.4f", encoding="utf-8")
+
+    if not fn_raw.empty:
+        fn_raw.to_csv(fn_path, index=False, encoding="utf-8")
+        print(f"   ✓ FN hexágonos CSV: {fn_path.name}  ({len(fn_raw):,} linhas)")
 
     print(f"\n   ✓ Diagnóstico TXT: {txt_path.name}")
     print(f"   ✓ Sweep CSV:       {csv_path.name}")
@@ -351,6 +467,9 @@ def write_diagnostic(
             print("    → threshold >0.1 pode indicar necessidade de ampliar teto HAND no GEE")
     else:
         print("\n   ✓ Threshold atual adequado — sem ação necessária no pipeline")
+    if not fn_raw.empty:
+        print(f"   → Para definir o novo teto HAND: use {fn_path.name} no GEE "
+              f"para ver a distribuição de HAND nos {len(fn_raw):,} FN.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -376,13 +495,19 @@ def main() -> None:
     print("SGB — Validação Threshold E2 (flood_score vs SGB Inundações)")
     print("=" * 70)
 
-    df           = load_data(args.sgb_ref, args.min_coverage)
-    sweep, best  = analyse_primary(df)
-    macro_fn     = analyse_false_negatives(df, best["threshold"])
-    regional     = analyse_regional(df, best["threshold"])
+    df                 = load_data(args.sgb_ref, args.min_coverage)
+    sweep, best        = analyse_primary(df)
+    macro_fn, fn_raw   = analyse_false_negatives(df, best["threshold"])
+    regional           = analyse_regional(df, best["threshold"])
+
+    # Análise descritiva nacional (GEE — sem referência SGB)
+    df_nat = load_gee_national()
+    national_coverage  = analyse_national_coverage(df_nat) if df_nat is not None else None
+    if df_nat is None:
+        print("\n4/4 — CSVs GEE não encontrados — análise nacional pulada")
 
     DIAGNOSE_DIR.mkdir(parents=True, exist_ok=True)
-    write_diagnostic(df, sweep, best, macro_fn, regional,
+    write_diagnostic(df, sweep, best, macro_fn, fn_raw, regional, national_coverage,
                      args.sgb_ref, args.min_coverage, ts)
     print("\nConcluído.")
 

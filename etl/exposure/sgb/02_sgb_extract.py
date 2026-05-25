@@ -71,6 +71,10 @@ MAPPING_PATH    = _DATA_DIR / "inputs/raw/sgb/01_sgb_mapping.json"
 POR_MUN_DIR     = _DATA_DIR / "inputs/raw/sgb/por_municipio"
 MUNICIPIOS_PATH = _DATA_DIR / "inputs/raw/ibge/malha_municipal/2024/municipios.gpkg"
 PROGRESS_FILE   = POR_MUN_DIR / "02_progress.json"
+FAILURES_PATH   = _DATA_DIR / "inputs/raw/sgb/02_failures.csv"
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _pipeline_log import log_failure, reset_failures  # noqa: E402
 
 TARGET_CRS = "EPSG:4674"  # SIRGAS 2000 geográfico
 
@@ -461,6 +465,7 @@ def _do_process_zip(task: dict) -> dict:
 
     tipos_ok: list[str] = []
     tipos_err: list[str] = []
+    failures:  list[dict] = []   # [{tipo, reason}] — alimenta 02_failures.csv
 
     for tipo, rows_list in task["tipo_rows"].items():
         gdfs = []
@@ -483,6 +488,7 @@ def _do_process_zip(task: dict) -> dict:
         if not gdfs:
             print(f"    ✗ {tipo}: sem geometrias válidas")
             tipos_err.append(tipo)
+            failures.append({"tipo": tipo, "reason": "sem geometrias válidas"})
             continue
 
         combined = pd.concat(gdfs, ignore_index=True)
@@ -500,8 +506,10 @@ def _do_process_zip(task: dict) -> dict:
         except Exception as e:
             print(f"✗ erro ao escrever: {e}")
             tipos_err.append(tipo)
+            failures.append({"tipo": tipo, "reason": f"erro ao escrever: {e}"})
 
-    return {"zip_name": task["zip_name"], "tipos_ok": tipos_ok, "tipos_err": tipos_err}
+    return {"zip_name": task["zip_name"], "tipos_ok": tipos_ok,
+            "tipos_err": tipos_err, "failures": failures}
 
 
 def _process_zip_worker(task: dict) -> dict:
@@ -558,8 +566,10 @@ def extract(
         done = _load_progress()
         n_done = sum(len(v) for v in done.values())
         print(f"  [RESUME] {n_done} entradas (zip+tipo) já processadas — serão puladas.")
-    elif not dry_run and PROGRESS_FILE.exists():
-        PROGRESS_FILE.unlink()
+    elif not dry_run:
+        if PROGRESS_FILE.exists():
+            PROGRESS_FILE.unlink()
+        reset_failures(FAILURES_PATH)
 
     counts = {"ok": 0, "skip": 0, "err": 0}
     interrupted = False
@@ -568,14 +578,27 @@ def extract(
     tasks: list[dict] = []
     for zip_name in all_zips:
         zip_path = DOWNLOAD_DIR / zip_name
+        mun_meta_pre = manifest.get(zip_name, {})
+        cd_mun_pre   = str(mun_meta_pre.get("cd_mun_ibge", "")).strip()
+        ibge_pre     = ibge_lookup.get(cd_mun_pre, {})
         if not zip_path.exists():
             print(f"  SKIP arquivo não encontrado: {zip_name}")
             counts["skip"] += 1
+            if not dry_run:
+                for tipo in TIPOS:
+                    if zip_name in zips_with_tipo[tipo]:
+                        log_failure(
+                            FAILURES_PATH, stage="extract", tipo=tipo,
+                            reason="ZIP não encontrado em raw_zips/",
+                            cd_mun=cd_mun_pre,
+                            sigla_uf=ibge_pre.get("sigla_uf") or mun_meta_pre.get("cd_estado", ""),
+                            nm_municipio=ibge_pre.get("nm_mun") or mun_meta_pre.get("nm_municipio", ""),
+                        )
             continue
 
-        mun_meta = manifest.get(zip_name, {})
-        cd_mun   = str(mun_meta.get("cd_mun_ibge", "")).strip()
-        ibge     = ibge_lookup.get(cd_mun, {})
+        mun_meta = mun_meta_pre
+        cd_mun   = cd_mun_pre
+        ibge     = ibge_pre
         sigla_uf = ibge.get("sigla_uf") or mun_meta.get("cd_estado", "SEM_UF")
         nm_mun   = ibge.get("nm_mun") or mun_meta.get("nm_municipio", cd_mun or zip_name)
 
@@ -630,7 +653,7 @@ def extract(
         print(f"\n{'═'*60}\nEXTRAÇÃO CONCLUÍDA — nada a processar.")
         return
 
-    def _handle_result(result: dict) -> None:
+    def _handle_result(result: dict, task: dict) -> None:
         for tipo in result.get("tipos_ok", []):
             done[tipo].add(result["zip_name"])
         _save_progress(done)
@@ -638,6 +661,21 @@ def extract(
             counts["err"] += 1
         else:
             counts["ok"] += 1
+        # Registra falhas no CSV de rastreamento
+        cd_mun_t      = str(task.get("mun_meta", {}).get("cd_mun_ibge", "")).strip()
+        sigla_uf_t    = task.get("sigla_uf", "")
+        nm_mun_t      = task.get("nm_mun", "")
+        if result.get("fatal"):
+            for tipo in result.get("tipos_err", TIPOS):
+                log_failure(FAILURES_PATH, stage="extract", tipo=tipo,
+                            reason=f"fatal: {result['fatal']}",
+                            cd_mun=cd_mun_t, sigla_uf=sigla_uf_t,
+                            nm_municipio=nm_mun_t)
+        else:
+            for f in result.get("failures", []):
+                log_failure(FAILURES_PATH, stage="extract", tipo=f["tipo"],
+                            reason=f["reason"], cd_mun=cd_mun_t,
+                            sigla_uf=sigla_uf_t, nm_municipio=nm_mun_t)
 
     def _print_result(result: dict, idx: int, label: str) -> None:
         elapsed   = result.get("elapsed", 0)
@@ -658,7 +696,7 @@ def extract(
             for i, task in enumerate(tasks, 1):
                 result = _process_zip_worker(task)
                 _print_result(result, i, task["label"])
-                _handle_result(result)
+                _handle_result(result, task)
         else:
             with ProcessPoolExecutor(
                 max_workers=workers,
@@ -675,9 +713,15 @@ def extract(
                     except Exception as exc:
                         print(f"  [{completed:>3}/{n_tasks}] {task['label']} — ERRO: {exc}")
                         counts["err"] += 1
+                        cd_mun_t = str(task.get("mun_meta", {}).get("cd_mun_ibge", "")).strip()
+                        for tipo in task.get("tipo_rows", {}).keys():
+                            log_failure(FAILURES_PATH, stage="extract", tipo=tipo,
+                                        reason=f"executor fatal: {exc}",
+                                        cd_mun=cd_mun_t, sigla_uf=task.get("sigla_uf", ""),
+                                        nm_municipio=task.get("nm_mun", ""))
                         continue
                     _print_result(result, completed, task["label"])
-                    _handle_result(result)
+                    _handle_result(result, task)
 
     except KeyboardInterrupt:
         interrupted = True
