@@ -14,7 +14,7 @@ sobre ~173 mil hexágonos com cobertura SGB ≥ 50% nas regiões S e SE.
 Resultado do sweep de threshold em `lhasa_high_frac`:
 
 | Threshold | Precision | Recall | F1 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | > 0,00 (atual) | 0,282 | 0,364 | 0,318 |
 | > 0,50 | 0,295 | 0,323 | 0,308 |
 | > 0,95 | 0,306 | 0,285 | 0,295 |
@@ -45,17 +45,18 @@ proporcional que o overlay trouxe para E2.
 
 ## Alternativas consideradas
 
-- **Overlay SGB (análogo ao E2)**: `sgb_alta_mta_frac > 0,3 AND sgb_coverage_frac
-  >= 0,5 → e1_abs = 1,00`. Incorporaria dados de campo 1:25.000 nos ~600
-  municípios cobertos. Rejeitada: o gap de F1 é estrutural e distribuído, não
-  um gap específico resolvível por camada adicional. Criaria heterogeneidade
-  metodológica semelhante à do E2 sem o benefício proporcional, pois o problema
-  do E1 não se concentra nos municípios com cartografia SGB.
+- **Overlay SGB (análogo ao E2)**: \`sgb_alta_mta_frac > 0,3 AND sgb_coverage_frac
+
+  > = 0,5 → e1_abs = 1,00\`. Incorporaria dados de campo 1:25.000 nos ~600
+  > municípios cobertos. Rejeitada: o gap de F1 é estrutural e distribuído, não
+  > um gap específico resolvível por camada adicional. Criaria heterogeneidade
+  > metodológica semelhante à do E2 sem o benefício proporcional, pois o problema
+  > do E1 não se concentra nos municípios com cartografia SGB.
 
 - **Ajustar threshold de `lhasa_high_frac`**: o sweep não mostra ponto ótimo;
   qualquer threshold acima de 0 piora F1. Rejeitada.
 
-- **Substituir por `lhasa_mean` com threshold ≥ 2,75`**: F1 = 0,326 (+0,008
+- **Substituir por `lhasa_mean` com threshold ≥ 2,75\`**: F1 = 0,326 (+0,008
   em relação ao atual). Ganho marginal que não justifica trocar a métrica
   principal e re-rodar o pipeline. Rejeitada.
 
