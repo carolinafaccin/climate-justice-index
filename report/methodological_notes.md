@@ -18,7 +18,7 @@ Os cinco indicadores desta dimensão utilizam os agregados por setor censitário
 
 ## Variáveis
 
-### A1 — Mulheres negras chefes de família:
+### P1 — Mulheres negras chefes de família:
 
 Percentual de responsáveis pelo domicílio do sexo feminino com cor da pele preta ou parda. Numerador: v01340 + v01344. Denominador: v01042.
 
@@ -66,21 +66,25 @@ Os dados foram obtidos do Cadastro Nacional de Estabelecimentos de Saúde (CNES)
 
 Para cada hexágono, os três estabelecimentos mais próximos são identificados via árvore KD (cKDTree), com distâncias em metros. A acessibilidade bruta é calculada como `v4_abs = Σ [ capacity_score_j / (distância_j + 100) ]`, onde o buffer de 100 m evita divisão por zero. A pontuação bruta foi normalizada com winsorização mais estreita (p3%–p97%) para suprimir o efeito de grandes clusters hospitalares. O valor final é invertido (1 − normalizado) para que maior inacessibilidade corresponda a maior vulnerabilidade.
 
-### v5 — Infraestrutura:
+### V5 — Infraestrutura:
 
 Percentual de domicílios sem coleta de esgoto, sem abastecimento de água e/ou sem coleta de lixo. Variáveis: v00311–v00316 (esgoto), v00112–v00118 (água), v00399–v00402 (lixo), em lógica OR; denominador v00001. O numerador é limitado ao denominador para evitar dupla contagem. Normalização min-max (p1%–p99%).
 
 # Dimensão de Exposição (e1–e5)
 
-### E1 — Deslizamentos de terra *(fonte: MapBiomas, 2025 - Coleção Risco Climático)*:
+### E1 — Deslizamentos de terra *(fonte: NASA LHASA, via Google Earth Engine)*:
 
-Percentual de domicílios em zonas de Média, Alta ou Muito Alta suscetibilidade a deslizamentos de terra.
+Fração da área de cada hexágono habitado classificada como Alta ou Muito Alta suscetibilidade a deslizamentos de terra segundo o NASA LHASA — Global Landslide Susceptibility Map (Stanley & Kirschbaum 2017). O LHASA é um modelo multicritério (fuzzy overlay) que combina cinco fatores: declividade, litologia, perda de floresta, densidade de estradas e distância a falhas geológicas. Resolução nativa: ~1 km. Classes de 1 (Very Low) a 5 (Very High).
 
-### E2 — Inundações *(fonte: HAND global + JRC Global River Flood Hazard v2.1, via Google Earth Engine)*:
+No GEE, o raster LHASA é carregado como asset, pixels NoData/oceano (valor 0) são mascarados, e por hexágono são calculados: `lhasa_mean` (valor médio das classes no hexágono, 1–5) e `lhasa_high_frac` (fração da área com LHASA ≥ 4, classes High ou Very High). A métrica do indicador é `lhasa_high_frac`. Normalização min-max sem winsorização — suscetibilidade é geograficamente concentrada e a winsorização colapsaria a cauda de interesse.
 
-Score médio de suscetibilidade a inundações por hexágonos habitados, combinando o modelo de terreno HAND (Height Above Nearest Drainage, resolução ~30 m, derivado do SRTM) com a máscara de perigo do JRC Global River Flood Hazard Maps (resolução ~1 km).
+**Limitação metodológica:** a calibração do indicador contra a Cartografia de Suscetibilidade do SGB/CPRM (movimentos de massa, ~600 municípios com cobertura ≥ 50%) produziu F1 = 0,32 (Precision = 0,28; Recall = 0,36) com nenhum ponto ótimo de threshold — subir o corte melhora marginalmente a precisão mas reduz o recall sem ganho líquido em F1. A discrepância é estrutural: o LHASA é um modelo global calibrado contra inventário mundial a ~1 km, enquanto o SGB mapeia campo a 1:25.000. O indicador captura o risco relativo entre hexágonos e regiões em escala nacional, mas subestima suscetibilidade em encostas tropicais urbanas e periurbanas onde o SGB confirma risco elevado. A integração do SGB como overlay — analogamente ao que foi feito para E2 e à metodologia MapBiomas Risco Climático — está identificada como melhoria futura.
 
-A metodologia é adaptada da Coleção 1 do MapBiomas Risco Climático (2024), removida a máscara de áreas urbanas que limitava o produto original a perímetros do Open Buildings — assim, o indicador alcança cobertura nacional independente de uso da terra. No GEE, cada pixel recebe um score classificado pelo HAND:
+### E2 — Inundações *(fonte: HAND global + JRC Global River Flood Hazard v2.1 + SGB/CPRM, via Google Earth Engine)*:
+
+Score médio de suscetibilidade a inundações por hexágono habitado, calculado a partir de duas camadas sobrepostas: uma camada base de cobertura nacional (HAND × JRC) e um overlay da Cartografia de Suscetibilidade a Desastres Geológicos do SGB/CPRM onde disponível. A metodologia replica a Coleção 1 do MapBiomas Risco Climático (2024), com duas diferenças intencionais: (i) a máscara de áreas urbanas do Open Buildings é removida, garantindo cobertura nacional independente de uso da terra; (ii) o SGB é aplicado a todos os hexágonos cobertos — não apenas a áreas urbanizadas — dado que o IIC não possui máscara urbana.
+
+**Camada base — HAND × JRC (cobertura nacional):** No GEE, cada pixel recebe um score pelo modelo de terreno HAND (Height Above Nearest Drainage, resolução ~30 m, derivado do SRTM), multiplicado pela máscara binária `JRC RP100_depth > 0` (perigo de inundação para período de retorno de 100 anos):
 
 | HAND | Score | Interpretação |
 | --- | --- | --- |
@@ -89,7 +93,15 @@ A metodologia é adaptada da Coleção 1 do MapBiomas Risco Climático (2024), r
 | 4–6 m | 0.33 | Média |
 | > 6 m | 0.00 | Sem suscetibilidade |
 
-O score é então multiplicado pela máscara binária `JRC RP100_depth > 0` (perigo de inundação modelado para período de retorno de 100 anos), de forma que apenas pixels simultaneamente em planície de inundação (HAND baixo) e em zona de perigo modelado (JRC) recebem score positivo. Pixels mascarados (calha de rios, oceano) contribuem com zero. O score por hexágono é a média dos pixels via `Reducer.mean()` com buffer de 174 m. Normalização min-max sem winsorização — inundações são fenômenos geograficamente concentrados em vales e margens fluviais, e a winsorização colapsaria a cauda para zero na maior parte do território.
+Apenas pixels simultaneamente em planície de inundação (HAND baixo) e em zona de perigo modelado (JRC) recebem score positivo. Pixels mascarados (calha de rios, oceano) contribuem com zero. O score por hexágono é a média dos pixels via `Reducer.mean()` com buffer de 174 m.
+
+**Overlay SGB (~600 municípios com cartografia disponível):** Após consolidar os scores GEE, aplica-se o overlay da cartografia SGB/CPRM em escala 1:25.000. Hexágonos em que a fração de área em classes Alta ou Muito Alta do SGB supera 30% *e* a cobertura do mapeamento no hexágono é de pelo menos 50% recebem `flood_score = 1.00`, independentemente do HAND ou do JRC — o SGB tem precedência como autoridade local. O campo `sgb_override` (booleano) é preservado no parquet de output para rastreabilidade. Onde o SGB não tem dados, a camada base HAND × JRC é a fonte definitiva.
+
+```
+se sgb_alta_mta_frac > 0.3 AND sgb_coverage_frac ≥ 0.5 → flood_score = 1.00
+```
+
+Normalização min-max sem winsorização — inundações são fenômenos geograficamente concentrados em vales e margens fluviais, e a winsorização colapsaria a cauda para zero na maior parte do território.
 
 ### E3 — Elevação do nível do mar *(fonte: Copernicus GLO-30 / Google Earth Engine)*:
 
@@ -204,6 +216,10 @@ O `capacity_score` de cada estabelecimento é a soma das seis categorias de serv
 
 Utilizado para o indicador e1. Referência: Stanley, T. & Kirschbaum, D. B. (2017). *A heuristic approach to global landslide susceptibility mapping*. Natural Hazards 87(1): 145–164. Modelo multicritério (fuzzy overlay) que combina slope, litologia, perda de floresta, densidade de estradas e distância a falhas. Resolução nativa: ~1 km (30 arc-seconds). Valores: 1 (Very Low) a 5 (Very High); valor 0 indica NoData/oceano (mascarado no processamento).
 
+Campos exportados por hexágono: `lhasa_mean` (média das classes LHASA, 1–5) e `lhasa_high_frac` (fração da área com LHASA ≥ 4). O indicador e1 utiliza `lhasa_high_frac` como métrica principal.
+
+**Nota de calibração:** validação contra a cartografia SGB/CPRM de movimentos de massa (~173 mil hexágonos com cobertura ≥ 50%, regiões S e SE) produziu F1 = 0,32 sem ponto de threshold ótimo — o sweep de threshold entre 0 e 1 em `lhasa_high_frac` não identifica nenhum limiar que melhore F1 em mais de 0,003. A discrepância é atribuída à diferença de escala (1 km global vs. 1:25.000 de campo) e ao fato de o modelo ter sido calibrado contra um inventário global que sub-representa encostas tropicais úmidas brasileiras.
+
 ## HAND — Height Above Nearest Drainage (Google Earth Engine)
 
 Utilizado para o indicador e2. Modelo de terreno hidrologicamente condicionado que representa a altura vertical de cada pixel em relação ao canal de drenagem mais próximo. Asset: `users/gena/global-hand/hand-100` (Donchyts et al. 2016), derivado do SRTM com resolução ~30 m. Classificação aplicada: 0–2 m, 2–4 m, 4–6 m, > 6 m.
@@ -211,6 +227,18 @@ Utilizado para o indicador e2. Modelo de terreno hidrologicamente condicionado q
 ## JRC Global River Flood Hazard Maps v2.1 (Google Earth Engine)
 
 Utilizado para o indicador e2 como máscara de perigo. Asset: `JRC/CEMS_GLOFAS/FloodHazard/v2_1`, mantido pelo Joint Research Centre da Comissão Europeia (CEMS-GLOFAS). Resolução: ~1 km. Banda utilizada: `RP100_depth` — profundidade de inundação em metros para período de retorno de 100 anos.
+
+## SGB/CPRM — Cartografia de Suscetibilidade a Desastres Geológicos
+
+Utilizada para o overlay do indicador e2 (inundações). Fonte: Serviço Geológico do Brasil (SGB/CPRM), portal rigeo.sgb.gov.br. Escala de mapeamento: 1:25.000. Cobertura: ~814 municípios prioritários por histórico de desastres, concentrados nas regiões Sul, Sudeste e Nordeste. Período dos levantamentos: 2013–2024.
+
+Os polígonos classificam a suscetibilidade a inundações e enxurradas em cinco níveis: Muito Alta (5), Alta (4), Média (3), Baixa (2) e Muito Baixa (1). A interseção com a grade H3 res9 é calculada com geometrias simplificadas a 20 m (`preserve_topology=True`), dentro da precisão nominal do mapeamento 1:25.000 (~5–10 m), para eliminar travamentos do GEOS com polígonos de muitos vértices.
+
+| Campo derivado | Descrição | Uso no IIC |
+| --- | --- | --- |
+| `sgb_alta_mta_frac` | Fração da área do hexágono em classes Alta ou Muito Alta | Threshold > 0,3 para override do E2 |
+| `sgb_coverage_frac` | Fração da área do hexágono coberta pelo mapeamento SGB | Threshold ≥ 0,5 para ativar o override |
+| `sgb_override` | Flag booleano — hexágonos com score elevado pelo SGB | Rastreabilidade no parquet de output do E2 |
 
 ## INPE — Focos de queimadas (2016–2025)
 
