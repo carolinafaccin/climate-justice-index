@@ -58,12 +58,13 @@ data/inputs/clean/
 Por limitação de memória, o script processa um tipo (massa ou inundação) por vez e, dentro de cada tipo, um estado por vez via filtro SQL no GPKG. Para cada estado:
 
 1. Polyfill H3 res9 nos polígonos SGB para obter células candidatas
-2. Interseção exata (`gpd.overlay`) entre polígonos SGB e polígonos H3, em EPSG:5880 (projetado, para área em m²)
-3. Agrega por hexágono: `sgb_alta_mta_frac` = área em classes 4–5 / área SGB total na célula
+1. Interseção exata (`gpd.overlay`) entre polígonos SGB e polígonos H3, em EPSG:5880 (projetado, para área em m²)
+1. Agrega por hexágono: `sgb_alta_mta_frac` = área em classes 4–5 / área SGB total na célula
 
 Hexágonos em fronteiras de estado são reconciliados na agregação final (soma de áreas de ambos os estados).
 
 Colunas de saída:
+
 - `h3_id` — índice H3 res9 (string)
 - `cd_estado` — UF com maior área mapeada no hexágono
 - `sgb_alta_mta_frac` — fração da área SGB mapeada em classes 4–5

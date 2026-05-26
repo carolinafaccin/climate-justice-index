@@ -1,20 +1,29 @@
 """
 ETL: HAND + JRC Flood Hazard / GEE → Indicator e2 (flood susceptibility).
 
-Metodologia (adaptada do MapBiomas Risco Climático, sem máscara urbana):
-  Pixel-level score = HAND_class × JRC_mask, onde:
+Metodologia (MapBiomas Risco Climático, sem máscara urbana + overlay SGB):
+
+  Camada base (cobertura nacional, via GEE):
+    Pixel-level score = HAND_class × JRC_mask
     • HAND 0–2 m → 1.00 (muito alta)
     • HAND 2–4 m → 0.66 (alta)
     • HAND 4–6 m → 0.33 (média)
     • HAND > 6 m → 0.00 (sem)
     • JRC > 0    → pixel mantido; senão zerado
 
-Toda a lógica de classificação e máscara está no script GEE.
-Este ETL apenas consolida os CSVs por UF, normaliza, e salva.
+  Overlay SGB (~600 municípios com cartografia disponível):
+    Se sgb_alta_mta_frac > 0.3 AND sgb_coverage_frac >= 0.5:
+        flood_score = 1.00  (SGB autoridade local — score máximo)
+        sgb_override = True
+
+Toda a lógica da camada base está no script GEE.
+Este ETL consolida os CSVs por UF, aplica o overlay SGB e salva.
 
 Input:  cfg.RAW_DIR/gee/.../h3_susc_inund_hand_jrc_v1_uf_*.csv
-        Colunas: h3_id, cd_uf, cd_setor, flood_score
-Output: cfg.FILES_H3["e2"] parquet
+        cfg.CLEAN_DIR/br_h3_sgb_inundacoes.parquet (output do 04_sgb_h3_intersect.py)
+Output: cfg.FILES_H3["e2"] parquet  (inclui coluna sgb_override)
+
+Referência: ADR-0039
 """
 
 import pandas as pd
@@ -77,9 +86,28 @@ def main():
         df_all = df_all.drop_duplicates(subset="h3_id", keep="first")
 
     # ==============================================================================
-    # 3. INDICATOR CALCULATION
+    # 3. SGB OVERLAY
     # ==============================================================================
-    print("\n2/3 - Calculating indicator...")
+    print("\n2/4 - Applying SGB overlay...")
+    SGB_H3_PATH = cfg.CLEAN_DIR / "br_h3_sgb_inundacoes.parquet"
+    if SGB_H3_PATH.exists():
+        sgb = pd.read_parquet(SGB_H3_PATH, columns=["h3_id", "sgb_alta_mta_frac", "sgb_coverage_frac"])
+        df_all = df_all.merge(sgb, on="h3_id", how="left")
+        sgb_mask = (df_all["sgb_alta_mta_frac"] > 0.3) & (df_all["sgb_coverage_frac"] >= 0.5)
+        df_all.loc[sgb_mask, "flood_score"] = 1.0
+        df_all["sgb_override"] = sgb_mask.fillna(False)
+        df_all = df_all.drop(columns=["sgb_alta_mta_frac", "sgb_coverage_frac"])
+        n_override = int(sgb_mask.sum())
+        print(f"   SGB override applied: {n_override:,} hexagons set to flood_score=1.00")
+        print(f"   (sgb_alta_mta_frac > 0.3 AND sgb_coverage_frac >= 0.5)")
+    else:
+        df_all["sgb_override"] = False
+        print(f"   WARNING: SGB parquet not found at {SGB_H3_PATH} — overlay skipped")
+
+    # ==============================================================================
+    # 4. INDICATOR CALCULATION
+    # ==============================================================================
+    print("\n3/4 - Calculating indicator...")
 
     df_all["flood_score"] = pd.to_numeric(df_all["flood_score"], errors="coerce").fillna(0)
 
@@ -97,17 +125,19 @@ def main():
     print(f"   Max e2_abs:  {df_all[col_e2_abs].max():.4f}")
 
     # ==============================================================================
-    # 4. MERGE WITH H3 BASE AND SAVE
+    # 5. MERGE WITH H3 BASE AND SAVE
     # ==============================================================================
-    print("\n3/3 - Merging with H3 base grid and saving...")
+    print("\n4/4 - Merging with H3 base grid and saving...")
     df_h3 = pd.read_parquet(cfg.FILES_H3["base_metadata"], columns=["h3_id"])
 
     df_final = df_h3.merge(
-        df_all[["h3_id", col_e2_abs, col_e2_norm]],
+        df_all[["h3_id", col_e2_abs, col_e2_norm, "sgb_override"]],
         on="h3_id", how="left"
     )
+    df_final["sgb_override"] = df_final["sgb_override"].fillna(False)
 
     print(f"   Hexagons with risk: {(df_final[col_e2_abs] > 0).sum():,}")
+    print(f"   Hexagons with sgb_override: {df_final['sgb_override'].sum():,}")
     print(f"   Hexagons without e2 data (NaN): {df_final[col_e2_abs].isna().sum():,}")
 
     utils.save_parquet(df_final, cfg.FILES_H3["e2"])

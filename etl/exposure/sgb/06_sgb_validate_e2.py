@@ -142,7 +142,11 @@ def load_data(sgb_ref_thresh: float, min_coverage: float) -> pd.DataFrame:
         )
 
     sgb = pd.read_parquet(SGB_INUND_PATH)
-    e2  = pd.read_parquet(E2_PATH, columns=["h3_id", E2_ABS_COL])
+    try:
+        e2 = pd.read_parquet(E2_PATH, columns=["h3_id", E2_ABS_COL, "sgb_override"])
+    except Exception:
+        e2 = pd.read_parquet(E2_PATH, columns=["h3_id", E2_ABS_COL])
+        e2["sgb_override"] = False
 
     print(f"   SGB inundações: {len(sgb):,} hexágonos com cobertura SGB")
     print(f"   E2:             {len(e2):,} hexágonos (grade nacional)")
@@ -150,6 +154,14 @@ def load_data(sgb_ref_thresh: float, min_coverage: float) -> pd.DataFrame:
     df_all = sgb.merge(e2, on="h3_id", how="inner")
     df_all["macro"] = df_all["cd_estado"].map(_macrorregiao)
     print(f"   Após join:      {len(df_all):,} hexágonos")
+
+    # Exclui hexágonos onde o SGB já entrou como input do E2 (override).
+    # Validar E2 contra SGB neles seria circular.
+    n_override = int(df_all["sgb_override"].sum())
+    if n_override > 0:
+        df_all = df_all[~df_all["sgb_override"]].copy()
+        print(f"   Excluídos {n_override:,} hexágonos com sgb_override=True (validação circular)")
+        print(f"   Após exclusão:  {len(df_all):,} hexágonos (validação da camada HAND×JRC)")
 
     # Mostra cobertura SGB por macrorregião ANTES do filtro
     print(f"\n   Cobertura SGB por macrorregião (antes do filtro ≥{min_coverage:.0%}):")

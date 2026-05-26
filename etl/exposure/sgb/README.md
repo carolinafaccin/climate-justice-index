@@ -17,7 +17,7 @@ source venv/bin/activate
 Dependências: `geopandas`, `fiona`, `requests`, `beautifulsoup4`, `rich`, `h3`.
 Espaço em disco estimado: ~50–100 GB para os ~814 ZIPs do SGB.
 
----
+______________________________________________________________________
 
 ## Script 00 — Download
 
@@ -44,6 +44,7 @@ python etl/exposure/sgb/00_sgb_scraper.py redownload
 ```
 
 **Opções úteis:**
+
 ```bash
 --workers 10        # downloads paralelos (padrão: 6)
 --state SP,RJ       # filtra por estado (para testes)
@@ -51,10 +52,11 @@ python etl/exposure/sgb/00_sgb_scraper.py redownload
 ```
 
 **Checklist antes de avançar:**
+
 - `report` mostra status `ok` para a maioria dos municípios
 - Pasta `raw_zips/` tem os ZIPs (pode verificar com `ls raw_zips/ | wc -l`)
 
----
+______________________________________________________________________
 
 ## Script 01 — Exploração e Inventário
 
@@ -63,6 +65,7 @@ inundação vs massa vs outros, lê metadados (colunas, valores de classe, nº d
 gera o inventário. É incremental: Ctrl+C salva o progresso.
 
 **Outputs:**
+
 - `01_sgb_inventory.csv` — um registro por arquivo por ZIP, com coluna `revisar`
 - `01_sgb_coverage.csv` — uma linha por ZIP com `status_zip`, `has_inundacao`, `has_massa`
 - `01_sgb_mapping.json` — rascunho do mapeamento textual → 0-5 **(editar antes do script 02)**
@@ -84,15 +87,18 @@ python etl/exposure/sgb/01_sgb_explore.py --redo
 ### O que verificar nos outputs
 
 **`01_sgb_inventory.csv`** — filtre pela coluna `revisar != ''`:
+
 - `sem_classe` → preencha `classe_col` com o nome da coluna de classe do shapefile
 - `zip_erro` → ZIP corrompido, rodar `00_sgb_scraper.py redownload`
 - `leitura_erro` → arquivo com CRC ruim, verificar se precisa re-baixar o ZIP
 
 **`01_sgb_coverage.csv`** — filtre por `status_zip`:
+
 - `sem_cobertura` → ZIP teve arquivos mas nenhum era inundação ou massa (pode ser legítimo)
 - `zip_erro` / `zip_vazio` → mesmos casos acima, visão por ZIP inteiro
 
 **`01_sgb_mapping.json`** — **obrigatório revisar antes do script 02**:
+
 - Abra o arquivo e verifique os valores `-1` na seção `"mapping"`
 - Cada `-1` significa "ainda não mapeado" — preencha com o inteiro correto (0–5)
 - Escala: `5=Muito Alta`, `4=Alta`, `3=Média/Moderada`, `2=Baixa`, `1=Muito Baixa`, `0=Sem`
@@ -103,7 +109,7 @@ python etl/exposure/sgb/01_sgb_explore.py --redo
 Abra no Excel, Numbers ou Google Sheets (UTF-8). Colunas que você pode editar:
 
 | Coluna | Quando editar |
-|---|---|
+| --- | --- |
 | `tipo` | Mude `outros` para `inundacao` ou `massa` se o arquivo foi mal classificado |
 | `classe_col` | Preencha com o nome exato da coluna de classe (ex: `CLASSE`, `CLASSE_SU`) |
 | `notes` | Adicione observações; não apague notas de erro existentes |
@@ -114,7 +120,7 @@ Abra no Excel, Numbers ou Google Sheets (UTF-8). Colunas que você pode editar:
 Após editar, rode o script 01 novamente (sem `--redo`) para regenerar os arquivos derivados
 com as correções aplicadas.
 
----
+______________________________________________________________________
 
 ## Script 02 — Extração por Município
 
@@ -124,6 +130,7 @@ por município (CRS padronizado, make_valid, classe mapeada). Sem simplificaçã
 **Pré-requisito:** `01_sgb_mapping.json` revisado (sem valores `-1` não intencionais).
 
 **Outputs em `por_municipio/{UF}/`:**
+
 - `{sigla_uf}_{nm_mun}_inundacao.gpkg` — harmonizado, sem simplificação
 - `{sigla_uf}_{nm_mun}_massa.gpkg` — harmonizado, sem simplificação
 
@@ -144,11 +151,12 @@ python etl/exposure/sgb/02_sgb_extract.py --limit 10
 ```
 
 **Se aparecerem avisos de classe não mapeada:**
-1. Anote os valores listados no aviso
-2. Adicione-os em `01_sgb_mapping.json` com o inteiro correto
-3. Re-execute o script 02
 
----
+1. Anote os valores listados no aviso
+1. Adicione-os em `01_sgb_mapping.json` com o inteiro correto
+1. Re-execute o script 02
+
+______________________________________________________________________
 
 ## Script 03 — Harmonização e Consolidação Nacional
 
@@ -158,6 +166,7 @@ python etl/exposure/sgb/02_sgb_extract.py --limit 10
 **Pré-requisito:** `por_municipio/` populado pelo script 02.
 
 **Outputs em `harmonized/`:**
+
 - `03_sgb_floods_br.gpkg`
 - `03_sgb_mass_br.gpkg`
 
@@ -172,7 +181,7 @@ python etl/exposure/sgb/03_sgb_harmonize.py --state SE,BA
 python etl/exposure/sgb/03_sgb_harmonize.py --resume
 ```
 
----
+______________________________________________________________________
 
 ## Script 04 — Interseção H3
 
@@ -183,6 +192,7 @@ um estado por vez para manter uso de memória baixo.
 **Pré-requisito:** `03_sgb_floods_br.gpkg` e `03_sgb_mass_br.gpkg` em `harmonized/`.
 
 **Outputs em `data/inputs/clean/`:**
+
 - `br_h3_sgb_massa.parquet`
 - `br_h3_sgb_inundacoes.parquet`
 
@@ -201,11 +211,12 @@ python etl/exposure/sgb/04_sgb_h3_intersect.py --dry-run
 ```
 
 **Colunas principais de saída:**
+
 - `sgb_alta_mta_frac` — fração da área SGB mapeada em classes 4–5 (usado em 05 e 06)
 - `sgb_coverage_frac` — fração do hexágono coberta por dados SGB (filtrar `>= 0.5` para análise)
 - `sgb_max_class` — classe máxima no hexágono
 
----
+______________________________________________________________________
 
 ## Script 05 — Calibração E1
 
@@ -224,18 +235,20 @@ python etl/exposure/sgb/05_sgb_calibrate_e1.py --sgb-ref 0.2 --min-coverage 0.3
 ```
 
 **O que observar no diagnóstico:**
+
 - Se threshold ótimo >> 0: ajustar em `e1_deslizamentos_lhasa.py`, atualizar ADR-0020
 - Se `lhasa_mean` supera `lhasa_high_frac` em F1: re-exportar `lhasa_med_high_frac` do GEE
 - Se F1 varia muito por macrorregião: avaliar threshold regional
 
----
+______________________________________________________________________
 
 ## Script 06 — Validação E2
 
 **O que faz:** Varre thresholds de `e2_inu_abs` (flood_score), encontra o ótimo, e
 analisa os falsos negativos: onde o SGB aponta alta suscetibilidade a inundação mas
-o E2 não detecta. Reporta distribuição por macrorregião e classe SGB máxima dos FN.
-Também exporta dois arquivos adicionais para investigação do teto HAND.
+a camada HAND×JRC não detecta. Exclui automaticamente hexágonos com `sgb_override=True`
+antes de calcular métricas — nesses hexágonos o SGB já entrou como input do E2, então
+validar contra SGB seria circular. A validação mede apenas a camada HAND×JRC base.
 
 **Pré-requisito:** parquet E2 (`br_h3_e2_inundacoes.parquet`) + `br_h3_sgb_inundacoes.parquet`
 
@@ -249,75 +262,14 @@ python etl/exposure/sgb/06_sgb_validate_e2.py --sgb-ref 0.2 --min-coverage 0.3
 
 - `diagnostic_e2_validation_<ts>.txt` — relatório principal
 - `diagnostic_e2_validation_<ts>.csv` — sweep completo por threshold
-- `diagnostic_e2_fn_hexagons_<ts>.csv` — hexágonos falsos negativos **(insumo para o GEE)**
+- `diagnostic_e2_fn_hexagons_<ts>.csv` — hexágonos falsos negativos da camada HAND×JRC
 
 **O que observar no diagnóstico:**
 
-- Se threshold ótimo >> 0: ajustar em `e2_inundacoes_hand.py`, atualizar ADR-0021
-- Se FN com `flood_score=0` concentrados em S/SE: avaliar ampliar teto HAND → continuar para GEE + 07
-- Se FN com `jrc_rp100=0` (passo 07): o problema é cobertura JRC, não o teto HAND
+- Métricas refletem apenas a camada HAND×JRC base (hexágonos override excluídos)
+- Se FN com `flood_score=0` persistirem em volume relevante: avaliar cobertura JRC/SGB na região
 
----
-
-## Script GEE — Diagnóstico de HAND nos Falsos Negativos
-
-**Contexto:** O parquet E2 armazena apenas o `flood_score` já classificado (0/0.33/0.66/1.00),
-não o valor bruto de HAND. Para saber se o teto atual de 6 m é adequado, é preciso consultar
-o HAND original no GEE para cada hexágono falso negativo.
-
-**Arquivo:** [`etl/gee_scripts/h3_e2_fn_hand_diagnostic_gee.js`](../../../etl/gee_scripts/h3_e2_fn_hand_diagnostic_gee.js)
-
-**Fluxo:**
-
-1. Rodar o script 06 → gera `diagnostic_e2_fn_hexagons_<ts>.csv`
-   (o CSV inclui colunas `latitude` e `longitude` — centróides dos hexágonos H3)
-
-2. Fazer upload do CSV no GEE como asset:
-   - GEE Code Editor → Assets → **New → CSV upload**
-   - Em *Advanced options*: **X column = `longitude`**, **Y column = `latitude`**
-   - Isso cria uma FeatureCollection de pontos, uma por hexágono FN
-   - Atualizar `FN_ASSET_ID` no script GEE com o caminho do asset criado
-
-3. Rodar o script no GEE Code Editor → envia 5 tasks ao Drive (uma por macrorregião)
-
-4. Aguardar tasks terminarem → baixar CSVs do Drive para:
-   `<data_dir>/inputs/raw/gee/fn_e2_hand_diagnostic/`
-
-**Outputs por task:** `fn_hand_diag_macro_{S|SE|CO|NE|N}.csv`
-Colunas: `h3_id, cd_estado, macro, sgb_max_class, hand_mean, hand_p50, hand_p75, hand_p90, jrc_rp100_mean`
-
----
-
-## Script 07 — Análise de HAND nos Falsos Negativos
-
-**O que faz:** Consolida os CSVs exportados pelo GEE e responde: qual distribuição
-real de HAND existe nos hexágonos FN? Quantos seriam recuperados se o teto HAND
-subisse para 8, 10, 12, 15 ou 20 m? Separa também FN cujo problema é a cobertura
-JRC (não o teto HAND).
-
-**Pré-requisito:** CSVs `fn_hand_diag_macro_*.csv` em `<data_dir>/inputs/raw/gee/fn_e2_hand_diagnostic/`
-
-```bash
-python etl/exposure/sgb/07_sgb_analyse_fn_hand.py
-
-# Diretório alternativo se os CSVs estiverem em outro local
-python etl/exposure/sgb/07_sgb_analyse_fn_hand.py --input-dir /caminho/para/csvs/
-```
-
-**Outputs em `cfg.DIAGNOSE_DIR`:**
-
-- `diagnostic_07_fn_hand_<ts>.txt` — distribuição de HAND por macro e classe SGB,
-  tabela de tetos candidatos com % de FN recuperados
-- `diagnostic_07_fn_hand_candidates_<ts>.csv` — tabela estruturada para documentar decisão
-
-**O que observar:**
-
-- `pct_jrc_zero > 50%` em alguma macro → o gargalo é JRC, não o teto HAND
-- Tabela de tetos: escolher o menor teto cuja recuperação se aproxima do máximo
-  (evita inflar o score com HAND alto demais)
-- Resultado informa ajuste no GEE v2 de E2 e nova ADR
-
----
+______________________________________________________________________
 
 ## Script 08 — Status do Pipeline por Município
 
@@ -344,7 +296,7 @@ Uma linha por município com colunas de status por tipo:
 
 **Sumário no terminal:**
 
-```
+```bash
 [MASSA]
   Download OK          :   814
   Explore OK (tipo)    :   750   (sem layer: 30)
@@ -362,11 +314,11 @@ Uma linha por município com colunas de status por tipo:
 > (harmonize). O 04 (H3 intersect) opera por estado e não rastreia por município.
 > `in_pipeline = True` indica que o município chegou ao 03 com sucesso.
 
----
+______________________________________________________________________
 
 ## Fluxo resumido
 
-```
+```bash
 00 collect + download
   ↓
   raw_zips/ + 00_sgb_manifest.csv
@@ -397,14 +349,15 @@ Uma linha por município com colunas de status por tipo:
 
 05 calibrate_e1 + 06 validate_e2   (independentes entre si, requerem 04)
   ↓
-  diagnósticos TXT/CSV → ajustes em e1/e2 conforme plano.md
+  diagnósticos TXT/CSV → ajustes em e1/e2 conforme ADRs
+  (06 exclui hexágonos sgb_override=True — valida só a camada HAND×JRC)
 ```
 
----
+______________________________________________________________________
 
 ## Estrutura de arquivos
 
-```
+```bash
 data/inputs/raw/sgb/
 ├── raw_zips/                        # ZIPs baixados (um por município)
 ├── por_municipio/                   # output do 02
