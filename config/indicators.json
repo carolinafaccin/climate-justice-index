@@ -142,7 +142,7 @@
           "name": "deslizamentos",
           "abbr": "des",
           "display_name": "Deslizamentos de terra",
-          "description": "Fração da área do hexágono em zona de alta ou muito alta suscetibilidade a deslizamentos de terra, restrita a hexágonos habitados",
+          "description": "Fração da área do hexágono em zona de alta ou muito alta suscetibilidade a deslizamentos de terra segundo o NASA LHASA — modelo multicritério (declividade, litologia, perda de floresta, estradas, falhas geológicas) com  resolução de 1 km —, restrita a hexágonos habitados",
           "source": {
             "dir": "gee/suscetibilidade-deslizamentos-lhasa-v1"
           }
@@ -150,8 +150,8 @@
         "e2": {
           "name": "inundacoes",
           "abbr": "inu",
-          "display_name": "Inundações, alagamentos e enxurradas",
-          "description": "Suscetibilidade média a inundações por hexágono, combinando altura do terreno acima dos canais de drenagem e perigo modelado para período de retorno de 100 anos, restrita a hexágonos habitados",
+          "display_name": "Inundações",
+          "description": "Suscetibilidade a inundações em hexágonos habitados, combinando o modelo de terreno HAND (~30 m) com o perigo JRC modelado para período de retorno de 100 anos (cobertura nacional), com integração de dados de cartografia de suscetibilidade do SGB/CPRM",
           "source": {
             "dir": "gee/suscetibilidade-inundacoes-hand-jrc-v1"
           }
@@ -160,7 +160,7 @@
           "name": "mar",
           "abbr": "mar",
           "display_name": "Elevação do nível do mar",
-          "description": "Quantidade de domicílios em hexágonos costeiros com elevação ≤ 1 m e distância ao oceano ≤ 10 km, ponderada pela fração de área em risco (Copernicus GLO-30)",
+          "description": "Fração da área do hexágono costeiro com elevação ≤ 1 m e distância ao oceano ≤ 10 km (Copernicus GLO-30), restrita a hexágonos habitados",
           "source": {
             "dir": "gee/suscetibilidade-elevacao-nivel-mar"
           }

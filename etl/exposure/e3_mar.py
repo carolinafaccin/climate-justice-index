@@ -2,6 +2,8 @@
 ETL: Copernicus DEM / GEE → Indicator e3 (sea-level rise exposure).
 
 Input:  cfg.RAW_DIR state-level CSVs with columns h3_id, risco_slr, qtd_dom
+        risco_slr = fraction of hexagon area at risk (Reducer.mean over binary raster)
+        qtd_dom   = household count, used only to restrict to inhabited hexagons
 Output: cfg.FILES_H3["e3"] parquet
 """
 
@@ -71,18 +73,17 @@ def main():
     df_all["risco_slr"] = pd.to_numeric(df_all["risco_slr"], errors="coerce").fillna(0)
     df_all["qtd_dom"]   = pd.to_numeric(df_all["qtd_dom"],   errors="coerce").fillna(0)
 
-    # e3_abs = households in sea-level-risk hexagons (0 for non-risk hexagons)
-    # risco_slr is binary (0/1) from Reducer.first() — see GEE script
-    # If re-exported with Reducer.mean(), risco_slr becomes fraction of area at risk (0–1),
-    # and this formula still holds correctly without any changes.
-    df_all[col_e3_abs] = df_all["qtd_dom"] * df_all["risco_slr"]
+    # e3_abs = fraction of hexagon area at risk (0–1), restricted to inhabited hexagons.
+    # risco_slr is Reducer.mean() over a binary raster — already a fraction from GEE.
+    # Uninhabited coastal hexagons receive 0 (no relevant exposure without residents).
+    df_all[col_e3_abs] = np.where(df_all["qtd_dom"] > 0, df_all["risco_slr"], 0.0)
 
     # winsorize=False: coastal indicator (<1% of hexagons), P99=0 would collapse normalisation
     df_all[col_e3_norm] = utils.normalize_minmax(df_all[col_e3_abs], winsorize=False)
 
-    n_risk = (df_all["risco_slr"] > 0).sum()
-    print(f"   Hexagons with risk > 0: {n_risk:,}")
-    print(f"   Total households at risk: {int(df_all.loc[df_all['risco_slr'] > 0, 'qtd_dom'].sum()):,}")
+    n_risk = (df_all[col_e3_abs] > 0).sum()
+    print(f"   Inhabited hexagons with area fraction > 0: {n_risk:,}")
+    print(f"   Mean area fraction at risk (inhabited): {df_all.loc[df_all[col_e3_abs] > 0, col_e3_abs].mean():.4f}")
 
     # ==============================================================================
     # 4. MERGE WITH H3 BASE AND SAVE
@@ -99,7 +100,7 @@ def main():
     # not "zero risk". formulas._nanmean_cols skips NaN so e3 is excluded from IE
     # mean for inland hexagons rather than pulling it down with a structural zero.
 
-    print(f"   Hexagons with households at risk: {(df_final[col_e3_abs] > 0).sum():,}")
+    print(f"   Inhabited coastal hexagons with area fraction > 0: {(df_final[col_e3_abs] > 0).sum():,}")
     print(f"   Hexagons without e3 data (non-coastal): {df_final[col_e3_abs].isna().sum():,}")
 
     print("\n4/4 - Saving parquet...")
@@ -120,11 +121,14 @@ def _write_diagnostic(df_all, df_final, csv_files):
         f.write(f"GEE directory : {GEE_DIR}\n")
         f.write(f"Files read    : {len(csv_files)}\n\n")
 
-        f.write("--- risco_slr (coastal hexagons) ---\n")
-        vc = df_all["risco_slr"].value_counts().sort_index()
-        for v, c in vc.items():
-            f.write(f"  risco_slr={v}: {c:,} hexagons\n")
-        f.write(f"\n  Total households at risk: {int(df_all.loc[df_all['risco_slr'] > 0, 'qtd_dom'].sum()):,}\n\n")
+        f.write("--- risco_slr fraction (coastal hexagons, inhabited only) ---\n")
+        inhabited = df_all[df_all["qtd_dom"] > 0]["risco_slr"]
+        f.write(f"  count  = {len(inhabited):,}\n")
+        f.write(f"  mean   = {inhabited.mean():.6f}\n")
+        f.write(f"  median = {inhabited.median():.6f}\n")
+        f.write(f"  min    = {inhabited.min():.6f}\n")
+        f.write(f"  max    = {inhabited.max():.6f}\n")
+        f.write(f"  zeros  = {(inhabited == 0).sum():,}\n\n")
 
         for col in [col_e3_abs, col_e3_norm]:
             s = df_final[col]
