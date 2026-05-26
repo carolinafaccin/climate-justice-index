@@ -1,7 +1,8 @@
 # ADR-0038: Score E2 híbrido em dois tiers (HAND × JRC alta confiança + HAND-puro confiança topográfica)
 
 ## Status
-Accepted — 2026-05-25
+
+Superseded — 2026-05-26 → ver [ADR-0039](0039-e2-mapbiomas-com-overlay-sgb.md)
 
 ## Contexto
 
@@ -33,7 +34,7 @@ Restrições adicionais:
 1. **Não podemos usar SGB no E2 sem perder o validador.** Se o SGB virasse
    componente do E2, o script 06 não poderia mais ser usado para calibração
    independente (vazamento metodológico).
-2. **Não podemos remover o JRC completamente.** Isso reduziria o E2 a um
+1. **Não podemos remover o JRC completamente.** Isso reduziria o E2 a um
    proxy puramente topográfico (HAND), inflaria FP em áreas pristinas longe
    de qualquer histórico de inundação e abandonaria a corroboração
    hidrológica que MapBiomas considera essencial.
@@ -51,7 +52,7 @@ Score idêntico ao v1. Onde o JRC corrobora, a metodologia MapBiomas é
 preservada na íntegra.
 
 | HAND | Score |
-|---|---|
+| --- | --- |
 | 0–2 m | 1.00 |
 | 2–4 m | 0.66 |
 | 4–6 m | 0.33 |
@@ -64,7 +65,7 @@ Score reduzido (teto = 0.50) + ceiling HAND estendido até 15 m. Sinaliza
 global". Captura FN urbano-pluviais sem que o E2 vire HAND puro.
 
 | HAND | Score |
-|---|---|
+| --- | --- |
 | 0–2 m | 0.50 |
 | 2–4 m | 0.33 |
 | 4–6 m | 0.20 |
@@ -74,7 +75,7 @@ global". Captura FN urbano-pluviais sem que o E2 vire HAND puro.
 
 ### Fórmula
 
-```
+```bash
 flood_score = tier1_score · 1{jrc > 0} + tier2_score · 1{jrc = 0}
 ```
 
@@ -122,6 +123,7 @@ score baixo do tier 2).
 ## Consequências
 
 - **Positivas**:
+
   - O E2 deixa de zerar em áreas urbano-pluviais que o SGB confirma como de
     alta suscetibilidade, sem virar proxy topográfico puro.
   - A metodologia MapBiomas é preservada nos pixels onde JRC corrobora
@@ -134,6 +136,7 @@ score baixo do tier 2).
     permanece útil para mensurar TP/FP/FN do v2 vs v1.
 
 - **Negativas / trade-offs**:
+
   - Diverge ligeiramente do MapBiomas (que não usa tier 2). É uma divergência
     justificada por evidência empírica nacional, documentada neste ADR.
   - Requer re-execução completa do pipeline E2 (GEE v2 + ETL Python +

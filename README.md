@@ -8,7 +8,7 @@ Projeto de dados para mensurar desigualdades territoriais e injustiças climáti
 
 O índice combina exposição a riscos climáticos, vulnerabilidade socioeconômica, grupos populacionais prioritários e capacidade de gestão municipal em uma grade hexagonal H3 (resolução 9, ~0,1 km²).
 
----
+______________________________________________________________________
 
 ## Metodologia
 
@@ -18,7 +18,7 @@ O índice combina exposição a riscos climáticos, vulnerabilidade socioeconôm
 - **Índices intermediários:** cada dimensão gera seu próprio índice — IP (Grupos Prioritários), IV (Vulnerabilidade), IE (Exposição), IG (Capacidade de Gestão Municipal)
 - **Índice final (IIC):** média simples de IP, IV, IE e IG invertido
 
----
+______________________________________________________________________
 
 ## Como executar
 
@@ -38,7 +38,7 @@ python pipeline.py --only scatter
 
 Etapas disponíveis: `calc` → `cluster` → `multicol` → `norm` → `export` → `scatter` → `report`
 
----
+______________________________________________________________________
 
 ## Estrutura de pastas
 
@@ -88,7 +88,7 @@ results/
 └── complete_gpkg/            # Arquivos GeoPackage
 ```
 
----
+______________________________________________________________________
 
 ## Configuração de caminhos
 

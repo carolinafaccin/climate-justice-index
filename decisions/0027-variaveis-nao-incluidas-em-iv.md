@@ -1,12 +1,15 @@
 # ADR-0027: Registrar variáveis consideradas e não-incluídas na dimensão IV (Vulnerabilidade)
 
 ## Status
+
 Accepted — 2026-05-19
 
 ## Contexto
+
 Durante o desenho do IIC e nas duas rodadas de validação, especialistas sugeriram variáveis adicionais para a dimensão IV além das cinco incluídas (v1 renda, v2 moradia, v3 analfabetismo, v4 saúde, v5 infraestrutura — ADRs 0018 e 0019). O ADR-0031 trata especificamente do NDVI de áreas verdes (caso com código preservado em `etl/discarded/`). Este ADR registra os demais descartes da dimensão.
 
 ## Decisão
+
 Registrar variáveis consideradas e descartadas para a dimensão IV, com a categoria de exclusão do ADR-0008.
 
 | Variável sugerida | Categoria(s) | Razão concreta |
@@ -23,15 +26,18 @@ Registrar variáveis consideradas e descartadas para a dimensão IV, com a categ
 Critérios usam a taxonomia do ADR-0008.
 
 ## Alternativas consideradas
+
 - **ADRs separados por variável**: granular, mas a maioria dos descartes tem o mesmo formato e justificativa — consolidar é mais econômico.
 - **Manter informalmente na nota metodológica**: perde a defesa estruturada que o ADR oferece.
 - **Consolidado por dimensão (escolhido)**: cada exclusão visível e rastreável.
 
 ## Consequências
+
 - Positivas: defesa do artigo preparada; revisores que perguntarem "por que não há indicador de saúde direta?" têm resposta direta (DataSus georreferenciado por LAI; v4 usa CNES como melhor proxy aberto disponível).
 - Negativas / trade-offs: lista envelhece com mudanças de fontes — DataSus pode abrir mais dados no futuro; revisitar quando aplicável.
 - Confiança: Alta — categorias do ADR-0008 cobrem todos os casos com razões verificáveis.
 
 ## Referências
+
 - ADR-0008 (critérios), ADR-0018 (indicadores IV incluídos), ADR-0019 (v4 saúde), ADR-0031 (NDVI áreas verdes descartado em ADR próprio).
 - Feedback consolidado das duas rodadas de validação, seção "Variáveis não incluídas e justificativas" da dimensão IV.

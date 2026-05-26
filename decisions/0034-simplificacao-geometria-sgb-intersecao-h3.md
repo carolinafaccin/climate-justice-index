@@ -1,9 +1,11 @@
 # ADR-0034: Simplificar geometrias SGB a 20 m antes da interseção com H3
 
 ## Status
+
 Accepted — 2026-05-22
 
 ## Contexto
+
 O script `03_sgb_h3_intersect.py` calcula, por hexágono H3 res9, a fração de área em classes de suscetibilidade alta/muito alta. Para isso, intersecta os polígonos SGB com as células H3 usando GEOS (via shapely).
 
 Os polígonos SGB são mapeamento de campo em escala 1:25.000. Nessa escala, uma única feição pode ter milhares de vértices descrevendo bordas detalhadas de encostas e planícies. Durante os testes, o script travava no cálculo GEOS para certos estados — em particular ao processar os últimos lotes de feições de AC (Acre), com `shapely.intersection` não retornando após vários minutos.
@@ -11,6 +13,7 @@ Os polígonos SGB são mapeamento de campo em escala 1:25.000. Nessa escala, uma
 A raiz do problema é que o custo de `shapely.intersection(a, b)` cresce com o número de vértices de `a` e `b`. Polígonos com 10.000+ vértices em apenas uma feição fazem o GEOS ficar preso em certos casos limite.
 
 ## Decisão
+
 Simplificar as geometrias SGB (já projetadas em EPSG:5880) com tolerância de **20 metros** e `preserve_topology=True` antes de qualquer cálculo de interseção.
 
 ```python
@@ -36,10 +39,12 @@ sgb_proj.geometry = sgb_proj.geometry.simplify(20.0, preserve_topology=True)
   - **`preserve_topology=False`**: mais rápido, mas pode criar geometrias inválidas que exigem `make_valid()` adicional. Não vale a complexidade extra com `preserve_topology=True`.
 
 ## Consequências
+
 - **Positivas**: elimina hang em GEOS para polígonos com muitos vértices; redução estimada de 10–50× no tempo de processamento por estado; sem impacto visível na acurácia de `sgb_alta_mta_frac`.
 - **Negativas / trade-offs**: introduz erro de borda de ~0–5 % nos hexágonos onde a fronteira de um polígono SGB cruza a fronteira de uma célula H3; polígonos muito pequenos (< 5.000 m²) podem sofrer distorção maior proporcionalmente, mas esses polígonos têm peso negligível na agregação por hexágono.
 - **Reversibilidade**: a simplificação ocorre apenas em memória durante o cálculo (`03_sgb_h3_intersect.py`); os GeoPackages harmonizados (`02_sgb_mass_br.gpkg`, `02_sgb_floods_br.gpkg`) preservam as geometrias originais intactas.
 
 ## Referências
+
 - ADR-0032: decisão de usar SGB como referência de calibração.
 - [etl/exposure/sgb/03_sgb_h3_intersect.py](../etl/exposure/sgb/03_sgb_h3_intersect.py) — implementação (`intersect_state`, linha da chamada `.simplify`).

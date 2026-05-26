@@ -1,6 +1,7 @@
 # ADR-0037: Rastrear dropout de municípios no pipeline SGB com failures.csv e reconciliador
 
 ## Status
+
 Accepted — 2026-05-25
 
 ## Contexto
@@ -27,11 +28,13 @@ não apenas por município.
 Implementar um sistema de rastreamento em três peças:
 
 ### 1. Módulo helper [`_pipeline_log.py`](../etl/exposure/sgb/_pipeline_log.py)
+
 Função `log_failure(path, *, stage, tipo, reason, cd_mun, sigla_uf, nm_municipio, mun_id)`
 que anexa uma linha a um CSV de falhas. Função `reset_failures(path)` que
 apaga o CSV no início de runs não-resume. Módulo compartilhado por 02 e 03.
 
 ### 2. Patches mínimos em [`02_sgb_extract.py`](../etl/exposure/sgb/02_sgb_extract.py) e [`03_sgb_harmonize.py`](../etl/exposure/sgb/03_sgb_harmonize.py)
+
 - `02_failures.csv`: registra falhas de extração com `cd_mun`, `sigla_uf`,
   `nm_municipio`, `tipo` e `reason` no momento em que ocorrem. Apagado e
   recriado em runs completos; preservado em `--resume`.
@@ -42,12 +45,13 @@ apaga o CSV no início de runs não-resume. Módulo compartilhado por 02 e 03.
   timestamp no 08).
 
 ### 3. Script reconciliador [`08_sgb_pipeline_status.py`](../etl/exposure/sgb/08_sgb_pipeline_status.py)
+
 Lê todos os artefatos (manifest, cobertura, progress.json, failures.csv) e
 produz `sgb_pipeline_status.csv` com **uma linha por município** e colunas
 separadas por tipo:
 
 | Coluna | Descrição |
-|---|---|
+| --- | --- |
 | `status_download` | ok / failed / sem_dado |
 | `status_explore_{tipo}` | ok / failed / n_a (sem layer) / not_processed |
 | `status_extract_{tipo}` | ok / failed / not_processed / n_a |
@@ -81,6 +85,7 @@ e em nenhum.
 ## Consequências
 
 - **Positivas**:
+
   - Visibilidade completa do funil: possível identificar em qual etapa cada
     município cai e por quê, sem reler logs de execução.
   - Separação por tipo: municípios que têm só massa (E1) ou só inundação (E2)
@@ -91,6 +96,7 @@ e em nenhum.
     da cobertura real usada nas análises.
 
 - **Negativas / trade-offs**:
+
   - 04 (H3 intersect) e 05/06 não são rastreados ao nível de município por
     limitação dos artefatos (o parquet H3 não tem `cd_mun`). O `in_pipeline`
     é proxy conservador: indica que o município chegou ao 03, mas não confirma

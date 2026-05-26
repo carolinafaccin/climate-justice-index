@@ -8,47 +8,58 @@
 | IE | Índice de Exposição a Riscos Climáticos |
 | IG | Índice de Gestão Municipal |
 
----
+______________________________________________________________________
 
 # Dimensão de Grupos Prioritários (IP)
 
 ## Fonte e coleta de dados
+
 Os cinco indicadores desta dimensão utilizam os agregados por setor censitário do Censo Demográfico 2022 (IBGE), disponíveis no portal do IBGE como tabelas da série `Tabela 0` (t0), por Unidade da Federação. Os valores são interpolados assimetricamente para a grade hexagonal H3: cada setor censitário é associado aos hexágonos que o intersectam, e seus valores ponderados pelo fator `peso_dom` — a razão entre o número de domicílios do CNEFE no hexágono e o total de domicílios do setor. Todos os indicadores são normalizados por min-max com winsorização nos percentis 1%–99%.
 
 ## Variáveis
 
 ### A1 — Mulheres negras chefes de família:
+
 Percentual de responsáveis pelo domicílio do sexo feminino com cor da pele preta ou parda. Numerador: v01340 + v01344. Denominador: v01042.
 
 ### P2 — População negra:
+
 Percentual de pessoas pretas e pardas residentes. Numerador: v01318 + v01320. Denominador: v01006.
 
 ### P3 — Indígenas e quilombolas:
+
 Percentual de pessoas indígenas ou quilombolas. Numerador: v01690 + v03196. Denominador: v01006.
 
 ### P4 — Idosos de baixa renda:
+
 Percentual de pessoas com 60 anos ou mais em domicílios de baixa renda. Numerador: (v01040 + v01041) × `peso_renda`. Denominador: v01006. O fator `peso_renda = min(1, 1.212 / renda_média)` aproxima a probabilidade de o setor concentrar domicílios abaixo de 1 salário mínimo, ponderando o grupo etário antes da agregação hexagonal.
 
 ### P5 — Crianças de baixa renda:
+
 Percentual de crianças de 0 a 9 anos em domicílios de baixa renda. Numerador: (v01031 + v01032) × `peso_renda`. Denominador: v01006. Mesmo `peso_renda` de p4.
 
 # Dimensão de Vulnerabilidade
 
 ## Fonte e coleta de dados
+
 Censo Demográfico 2022 (IBGE), agregados por setor censitário, com interpolação assimétrica para hexágonos H3 via `peso_dom`. O indicador V4 utiliza fonte distinta (CNES), descrita em seguida.
 
 ## Variáveis
 
 ### V1 — Renda:
+
 Inverso da renda média mensal do responsável pelo domicílio, com teto de 2 salários mínimos (R$ 2.424, referência 2022). A renda média ponderada do hexágono é calculada como (v06004 × v06001) × peso assimétrico / soma ponderada de v06001. Hexágonos com renda acima de R$ 2.424 recebem escore zero; abaixo, o gradiente é normalizado por min-max (p1%–p99%) e invertido (1 − valor normalizado), pois renda maior indica menor vulnerabilidade.
 
 ### V2 — Moradia precária:
+
 Percentual de domicílios com ao menos uma condição de inadequação habitacional (domicílios improvisados, cortiços, habitações sem paredes, banheiro coletivo, sanitário improvisado ou ausência de banheiro). Variáveis: v00002, v00050–v00052, v00236–v00238 (numerador, lógica OR); v00001 (denominador). O numerador é limitado ao denominador antes da divisão para evitar dupla contagem de domicílios com múltiplas condições simultâneas. Normalização min-max (p1%–p99%).
 
 ### V3 — Analfabetismo:
+
 Percentual de pessoas acima de 15 anos que não sabem ler e escrever. Numerador: v00853 + v00855 + v00857. Denominador: v01006. Normalização min-max (p1%–p99%).
 
 ### V4 — Inacessibilidade à saúde *(fonte: CNES 2026)*:
+
 Inacessibilidade gravitacional a estabelecimentos de saúde, medida pelo inverso da força de atração dos três estabelecimentos mais próximos de cada hexágono, ponderada pela capacidade de serviços e pela distância euclidiana.
 
 Os dados foram obtidos do Cadastro Nacional de Estabelecimentos de Saúde (CNES), Ministério da Saúde, com extração em janeiro de 2026. O `capacity_score` de cada estabelecimento é a soma de seis categorias de serviço (centro cirúrgico, obstétrico, neonatal, atendimento hospitalar, apoio e ambulatorial), acrescida de 1 para garantir pontuação mínima não nula a todos os estabelecimentos.
@@ -56,14 +67,17 @@ Os dados foram obtidos do Cadastro Nacional de Estabelecimentos de Saúde (CNES)
 Para cada hexágono, os três estabelecimentos mais próximos são identificados via árvore KD (cKDTree), com distâncias em metros. A acessibilidade bruta é calculada como `v4_abs = Σ [ capacity_score_j / (distância_j + 100) ]`, onde o buffer de 100 m evita divisão por zero. A pontuação bruta foi normalizada com winsorização mais estreita (p3%–p97%) para suprimir o efeito de grandes clusters hospitalares. O valor final é invertido (1 − normalizado) para que maior inacessibilidade corresponda a maior vulnerabilidade.
 
 ### v5 — Infraestrutura:
+
 Percentual de domicílios sem coleta de esgoto, sem abastecimento de água e/ou sem coleta de lixo. Variáveis: v00311–v00316 (esgoto), v00112–v00118 (água), v00399–v00402 (lixo), em lógica OR; denominador v00001. O numerador é limitado ao denominador para evitar dupla contagem. Normalização min-max (p1%–p99%).
 
 # Dimensão de Exposição (e1–e5)
 
 ### E1 — Deslizamentos de terra *(fonte: MapBiomas, 2025 - Coleção Risco Climático)*:
+
 Percentual de domicílios em zonas de Média, Alta ou Muito Alta suscetibilidade a deslizamentos de terra.
 
 ### E2 — Inundações *(fonte: HAND global + JRC Global River Flood Hazard v2.1, via Google Earth Engine)*:
+
 Score médio de suscetibilidade a inundações por hexágonos habitados, combinando o modelo de terreno HAND (Height Above Nearest Drainage, resolução ~30 m, derivado do SRTM) com a máscara de perigo do JRC Global River Flood Hazard Maps (resolução ~1 km).
 
 A metodologia é adaptada da Coleção 1 do MapBiomas Risco Climático (2024), removida a máscara de áreas urbanas que limitava o produto original a perímetros do Open Buildings — assim, o indicador alcança cobertura nacional independente de uso da terra. No GEE, cada pixel recebe um score classificado pelo HAND:
@@ -77,17 +91,20 @@ A metodologia é adaptada da Coleção 1 do MapBiomas Risco Climático (2024), r
 
 O score é então multiplicado pela máscara binária `JRC RP100_depth > 0` (perigo de inundação modelado para período de retorno de 100 anos), de forma que apenas pixels simultaneamente em planície de inundação (HAND baixo) e em zona de perigo modelado (JRC) recebem score positivo. Pixels mascarados (calha de rios, oceano) contribuem com zero. O score por hexágono é a média dos pixels via `Reducer.mean()` com buffer de 174 m. Normalização min-max sem winsorização — inundações são fenômenos geograficamente concentrados em vales e margens fluviais, e a winsorização colapsaria a cauda para zero na maior parte do território.
 
-### E3 — Elevação do nível do mar *(fonte: Copernicus GLO-30 / Google Earth Engine)*: 
+### E3 — Elevação do nível do mar *(fonte: Copernicus GLO-30 / Google Earth Engine)*:
+
 Quantidade de domicílios em hexágonos costeiros com elevação ≤ 1 m e distância ao oceano ≤ 10 km, ponderada pela fração de área em risco.
 
 No GEE, pixels oceânicos (NoData no DEM original) foram preenchidos com −10; a distância euclidiana de cada pixel terrestre ao oceano foi calculada com `fastDistanceTransform`. Um pixel foi classificado em risco se elevação ≤ 1 m AND distância ≤ 10 km — limiar que inclui estuários e planícies costeiras legítimas, excluindo baixadas fluviais sem conexão hidrológica com o mar. A fração de área em risco de cada hexágono foi obtida por `Reducer.mean()` com buffer de 174 m (circunraio do H3 res9). O indicador final é o produto `qtd_dom × risco_slr`. Normalização min-max sem winsorização. Hexágonos do interior do país recebem valor ausente (não aplicável) e são excluídos do cálculo do IE — o indicador E3 só entra na média do IE para municípios costeiros.
 
 ### E4 — Calor extremo *(fonte: Landsat 5, 7, 8 e 9 / NASA/USGS / Google Earth Engine)*:
+
 Anomalia positiva de temperatura de superfície terrestre (LST) em hexágonos habitados, calculada como a diferença entre a média do período recente (2015–2024) e a média histórica de referência (1985–2010). Hexágonos desabitados recebem pontuação zero.
 
 Os dados foram extraídos no GEE das coleções NASA/USGS Collection 2 Level-2, com remoção de nuvens via banda QA_PIXEL (bits 3 e 4). A temperatura foi obtida das bandas ST_B6 (Landsat 5 e 7) e ST_B10 (Landsat 8 e 9), convertidas para graus Celsius. As médias LST dos dois períodos foram calculadas e a anomalia obtida pela diferença. Anomalias negativas (resfriamento ou estabilidade térmica) recebem pontuação zero. A anomalia positiva é diretamente normalizada por min-max com winsorização (p1%–p99%), sem ponderação pela quantidade de domicílios — a escala populacional é capturada nas dimensões de grupos prioritários e vulnerabilidade, onde ela conceitualmente pertence. A abordagem de anomalia, em vez de temperatura absoluta, permite comparar municípios de climas naturalmente distintos em escala nacional.
 
 ### E5 — Focos de queimadas *(fonte: INPE, 2016–2025)*:
+
 Exposição crônica a focos de queimadas em hexágonos habitados, medida pela fração de anos (2016–2025) com ao menos um foco de calor na vizinhança (~600 m) do hexágono em pelo menos 2 dos 10 anos analisados.
 
 Para cada ano, as coordenadas dos focos do INPE (predominantemente sensor VIIRS a 375 m de resolução, satélites NOAA-20, NOAA-21 e Suomi NPP) foram convertidas em hexágonos H3 (resolução 9) e expandidas para um raio de aproximadamente 600 m via operação `grid_disk(k=2)` — buffer calibrado para a resolução do sensor VIIRS, ao contrário do buffer de 1 km que seria adequado apenas para o sensor MODIS (1 km). Hexágonos com foco em apenas 1 ano dos 10 recebem pontuação zero, pois eventos isolados não caracterizam risco climático crônico; apenas exposição recorrente (fração ≥ 0,2, equivalente a 2 ou mais anos) é computada. Normalização min-max com winsorização (p1%–p99%), sem ponderação pela quantidade de domicílios — a escala populacional é capturada nas dimensões de grupos prioritários e vulnerabilidade.
@@ -95,11 +112,13 @@ Para cada ano, as coordenadas dos focos do INPE (predominantemente sensor VIIRS 
 # 4 Dimensão de Capacidade de Gestão Municipal
 
 ### G1 — Investimento ambiental *(fonte: Siconfi/FINBRA, 2015–2024)*:
+
 Média anual das despesas municipais liquidadas per capita em gestão ambiental (função orçamentária 18), entre 2015 e 2024.
 
 Os dados foram obtidos dos arquivos anuais do Sistema de Informações Contábeis e Fiscais do Setor Público Brasileiro (Siconfi/STN). Para cada ano, as despesas liquidadas na função 18 foram divididas pela população municipal registrada no mesmo arquivo. O indicador é a média dos valores per capita do período, tornando o cálculo robusto a anos sem declaração. Antes da normalização, foi aplicada transformação logarítmica (log1p) para comprimir a assimetria à direita da distribuição — a maioria dos municípios investe pouco e poucos investem valores excepcionais. Normalização min-max (p1%–p99%). Invertido no nível da dimensão (IG = 1 − média dos g).
 
 ### G2 a G6 — Indicadores binários de capacidade de gestão *(fonte: MUNIC/IBGE)*:
+
 Os cinco indicadores abaixo utilizam a Pesquisa de Informações Básicas Municipais (MUNIC), pesquisa censitária que levanta a existência de instrumentos, planos e sistemas em todos os municípios brasileiros. Respostas Sim/Não foram convertidas para 1/0 e propagadas diretamente como valor normalizado, sem etapa adicional de transformação. Para g4, o valor é 1 se ao menos um dos dois conselhos existir no município (lógica OR entre as variáveis).
 
 | Código | Indicador | Variável MUNIC | Edição |
@@ -111,12 +130,14 @@ Os cinco indicadores abaixo utilizam a Pesquisa de Informações Básicas Munici
 | g6 | Mapeamento e zoneamento de áreas de risco | smap122 | 2023 |
 
 ### G7 — Cadastro de famílias em áreas de risco *(fonte: ICM/MIDR, 2026)*:
+
 Existência de cadastro ou identificação de famílias em áreas de risco no município, segundo o Índice de Capacidade Municipal (ICM) do Ministério da Integração e do Desenvolvimento Regional, edição de 2026. Variável v7 (binária: 1 = possui; 0 = não possui). Para municípios presentes em mais de uma lista do ICM, manteve-se o valor máximo, garantindo que qualquer registro positivo seja preservado. Propagado diretamente sem normalização adicional.
 
 ### G8 — Políticas e programas de direitos humanos *(fonte: MUNIC 2023)*:
+
 Quantidade de políticas e programas municipais ativos em direitos humanos, contada entre 21 iniciativas levantadas pela MUNIC 2023. Único indicador contínuo da dimensão de gestão — enquanto g2–g7 são binários, g8 varia de 0 a 21 conforme o número de iniciativas ativas. Variáveis: mdhu571–mdhu5716, mdhu58, mdhu61, mdhu64, mdhu67, mdhu69. Normalização min-max (p1%–p99%). Invertido no nível da dimensão.
 
----
+______________________________________________________________________
 
 # Dicionário de variáveis e fontes
 

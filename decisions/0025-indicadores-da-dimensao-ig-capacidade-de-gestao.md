@@ -1,12 +1,15 @@
 # ADR-0025: Definir os oito indicadores da dimensão IG (Capacidade de Gestão Municipal)
 
 ## Status
+
 Accepted — 2026-05-19
 
 ## Contexto
+
 A dimensão IG foi reformulada (ADR-0005) para medir capacidade institucional do município de responder a impactos climáticos — investimento, planejamento, participação, governança, resposta, mapeamento, reconhecimento e direitos humanos. Diferentemente das outras três dimensões, a maioria dos dados disponíveis para essa dimensão (MUNIC, ICM, Siconfi) é coletada em **escala municipal**, não intramunicipal. Isso exige uma escolha de premissa: forçar interpolação intramunicipal artificial ou aceitar que IG opera em escala diferente.
 
 ## Decisão
+
 A dimensão IG é composta por **oito indicadores**, todos calculados em **escala municipal** e propagados uniformemente para todos os hexágonos do município. Essa é uma exceção consciente à premissa de análise intramunicipal (ADR-0007) — IG mede capacidade institucional, que é atributo do município como um todo, não do território.
 
 | Código | Indicador | Fonte | Tipo | Variável |
@@ -25,6 +28,7 @@ A dimensão IG é composta por **oito indicadores**, todos calculados em **escal
 **Direção semântica**: maior `g_norm` = melhor capacidade de gestão. A inversão para o IIC final ocorre no momento da agregação (ADR-0014: `1 − IG_médio`).
 
 ## Alternativas consideradas
+
 - **Forçar interpolação intramunicipal**: dados municipais propagados aos hexágonos via algum gradiente artificial (distância ao centro administrativo, densidade populacional etc.). Rejeitado por inventar variação que não existe na fonte — capacidade institucional é atributo da prefeitura, não de bairros.
 - **Não incluir IG por inconsistência de escala**: simplificaria a estrutura, mas removeria a única dimensão que mede resposta institucional, tornando o IIC apenas diagnóstico. Rejeitado pelo ADR-0005.
 - **Incluir COMPDEC (Coordenação Municipal de Proteção e Defesa Civil) como indicador**: considerado, mas alguns especialistas questionaram a real efetividade das COMPDECs na validação. Substituído por g3 (NUPDECs) e g5 (sistema de alerta), métricas mais objetivas.
@@ -33,11 +37,13 @@ A dimensão IG é composta por **oito indicadores**, todos calculados em **escal
 - **Oito indicadores como definidos (escolhido)**: cobre as categorias-chave de gestão municipal pública brasileira; usa apenas fontes oficiais abertas; mistura instrumentos (planos, conselhos, sistemas) com investimento e proteção social; alinhado à recomendação consolidada de validação.
 
 ## Consequências
+
 - Positivas: dimensão usa apenas fontes oficiais e abertas brasileiras; cada indicador é interpretável isoladamente por um gestor municipal ("nosso município tem ou não tem este instrumento?"); inclui g8 contínuo para captar profundidade de política em direitos humanos (não apenas existência).
 - Negativas / trade-offs: escala municipal contradiz a premissa intramunicipal do índice — exige explicação no artigo e na interface do dashboard (a leitura "mesmo valor de IG em toda a cidade" pode confundir); MUNIC tem coletas em anos distintos (2020 e 2023), introduzindo defasagem entre indicadores; binários perdem gradação (município com plano de contingência básico vale igual a um com plano completo e atualizado); ICM/MIDR é nova fonte (2026), sem histórico de continuidade.
 - Confiança: Média — escolhas operacionais defensáveis, mas a heterogeneidade temporal das fontes MUNIC e a binarização limitam precisão.
 
 ## Referências
+
 - ADR-0003 (4 dimensões), ADR-0005 (IG = Capacidade de Gestão Municipal), ADR-0007 (foco intramunicipal — exceção registrada aqui), ADR-0012 (normalização), ADR-0014 (IG invertido), ADR-0016 (g2–g6 binários sem winsorização), ADR-0029 (variáveis IG não-incluídas).
 - [config/indicators.json](../config/indicators.json) — definições operacionais.
 - [report/methodological_notes.md](../report/methodological_notes.md) — registro técnico detalhado.
