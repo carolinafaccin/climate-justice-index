@@ -43,7 +43,7 @@
         "p4": {
           "name": "idosos",
           "abbr": "ido",
-          "display_name": "Idosos (60 anos ou mais)",
+          "display_name": "Idosos de baixa renda",
           "description": "Percentual de pessoas com 60 anos ou mais em domicílios com renda do responsável até 1 salário mínimo (R$ 1.212, referência 2022) — aproximado pela ponderação do setor censitário: peso = min(1, 1212/renda_média)",
           "source": {
             "source_dir": "ibge/censo/2022/agregados_por_setores/t0",
@@ -54,7 +54,7 @@
         "p5": {
           "name": "criancas",
           "abbr": "cri",
-          "display_name": "Crianças (9 anos ou menos)",
+          "display_name": "Crianças de baixa renda",
           "description": "Percentual de crianças de 0 a 9 anos em domicílios com renda do responsável até 1 salário mínimo (R$ 1.212, referência 2022) — aproximado pela ponderação do setor censitário: peso = min(1, 1212/renda_média)",
           "source": {
             "source_dir": "ibge/censo/2022/agregados_por_setores/t0",
@@ -67,7 +67,7 @@
     "vulnerabilidade": {
       "abbr": "IV",
       "name": "Índice de Vulnerabilidade",
-      "display_name": "Vulnerabilidade Socioeconômica",
+      "display_name": "Vulnerabilidade Social",
       "invert": false,
       "indicators": {
         "v1": {
@@ -178,7 +178,7 @@
           "name": "queimadas",
           "abbr": "que",
           "display_name": "Focos de queimadas",
-          "description": "Fração de anos (2016–2025) com focos de queimadas na vizinhança (~600 m) do hexágono, considerando apenas exposição recorrente (≥ 2 anos dos 10), restrita a hexágonos habitados",
+          "description": "Fração de anos (2016–2025) com focos de queimadas na vizinhança (~1 km) do hexágono, considerando apenas exposição recorrente (≥ 2 anos dos 10), restrita a hexágonos habitados",
           "source": {
             "dir": "inpe/queimadas"
           }
