@@ -240,16 +240,19 @@ def merge_tipologias(df: pd.DataFrame) -> pd.DataFrame:
 
 # ─── Step 4: Select candidates per cluster ───────────────────────────────────
 def select_candidates(df: pd.DataFrame) -> pd.DataFrame:
-    thresh = df["iic_final"].quantile(IIC_TERCILE)
-    pool   = df[df["iic_final"] >= thresh].copy()
-    print(
-        f"IIC pool threshold (quantile {IIC_TERCILE:.0%}): IIC >= {thresh:.4f} "
-        f"-> {len(pool):,} municipalities eligible"
-    )
+    # Threshold applied per cluster so that all clusters produce candidates.
+    # Cluster 3 (best governance, lowest IIC) would be fully excluded by a
+    # global national-median filter, making its sheet disappear from the Excel.
+    print(f"IIC pool threshold (quantile {IIC_TERCILE:.0%}) applied per cluster:")
 
     records = []
-    for cl in sorted(pool["cluster"].unique()):
-        sub = pool[pool["cluster"] == cl].sort_values("iic_final", ascending=False)
+    for cl in sorted(df["cluster"].unique()):
+        sub_all = df[df["cluster"] == cl]
+        thresh  = sub_all["iic_final"].quantile(IIC_TERCILE)
+        sub     = sub_all[sub_all["iic_final"] >= thresh].copy().sort_values(
+            "iic_final", ascending=False
+        )
+        print(f"  Cluster {cl}: IIC >= {thresh:.4f} -> {len(sub):,} municipalities eligible")
 
         chosen     = []
         chosen_idx = set()
