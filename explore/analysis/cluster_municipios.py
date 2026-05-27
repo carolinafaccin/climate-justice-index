@@ -11,12 +11,16 @@ Strategy:
   7. Export (filenames include _k{N_CLUSTERS} so different runs never overwrite):
        {DIAGNOSE_DIR}/analysis/clusters_municipios_k{N_CLUSTERS}.csv
        {DIAGNOSE_DIR}/analysis/candidatos_estudo_de_caso_k{N_CLUSTERS}.xlsx
+       {DIAGNOSE_DIR}/analysis/cluster_heatmap_k{N_CLUSTERS}.png
+       {DIAGNOSE_DIR}/analysis/cluster_pca_k{N_CLUSTERS}.png
+       {DIAGNOSE_DIR}/analysis/cluster_boxplots_k{N_CLUSTERS}.png
+       {DIAGNOSE_DIR}/analysis/cluster_mapa_k{N_CLUSTERS}.png
 
 Usage:
     python diagnose/analysis/cluster_municipios.py          # default k=4
     # edit N_CLUSTERS below and re-run for a different k
 
-Dependencies: pandas, scikit-learn, openpyxl (all in project venv)
+Dependencies: pandas, scikit-learn, matplotlib, seaborn, openpyxl (all in project venv)
 """
 
 import sys
@@ -24,7 +28,13 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import seaborn as sns
 
 SCRIPT_DIR   = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent.parent
@@ -63,8 +73,17 @@ TIPOLOGIAS_FILE = cfg.RAW_DIR / "ibge" / "tipologias" / "tipologias_municipios_b
 
 OUT_DIR = cfg.DIAGNOSE_DIR / "analysis"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
-OUT_CSV   = OUT_DIR / f"clusters_municipios_k{N_CLUSTERS}.csv"
-OUT_EXCEL = OUT_DIR / f"candidatos_estudo_de_caso_k{N_CLUSTERS}.xlsx"
+OUT_CSV      = OUT_DIR / f"clusters_municipios_k{N_CLUSTERS}.csv"
+OUT_EXCEL    = OUT_DIR / f"candidatos_estudo_de_caso_k{N_CLUSTERS}.xlsx"
+OUT_HEATMAP  = OUT_DIR / f"cluster_heatmap_k{N_CLUSTERS}.png"
+OUT_PCA      = OUT_DIR / f"cluster_pca_k{N_CLUSTERS}.png"
+OUT_BOXPLOTS = OUT_DIR / f"cluster_boxplots_k{N_CLUSTERS}.png"
+OUT_MAP      = OUT_DIR / f"cluster_mapa_k{N_CLUSTERS}.png"
+
+MALHA_DIR       = cfg.RAW_DIR / "ibge" / "malha_municipal" / "2024"
+MUNICIPIOS_GPKG = MALHA_DIR / "municipios.gpkg"
+UF_GPKG         = MALHA_DIR / "uf.gpkg"
+PAIS_GPKG       = MALHA_DIR / "pais.gpkg"
 
 
 # ─── Step 1: Load & aggregate to municipality level ───────────────────────────
@@ -118,9 +137,10 @@ _DIM_META = {
     },
     "ig": {
         "label": "Gestao Municipal (IG)",
-        # IG is inverted in the IIC: low IG = poor governance = more injustice
-        "high_means": "boa capacidade de gestao municipal",
-        "low_means":  "deficit de gestao municipal (pior contribuicao ao IIC)",
+        # ig stored in parquet = 1 − raw_governance (inversion applied before saving).
+        # Therefore: high stored ig = poor governance; low stored ig = good governance.
+        "high_means": "deficit de gestao municipal (pior contribuicao ao IIC)",
+        "low_means":  "boa capacidade de gestao municipal",
     },
 }
 
@@ -169,7 +189,7 @@ def run_kmeans(agg: pd.DataFrame) -> pd.DataFrame:
 
     # ── Profile table ──────────────────────────────────────────────────────────
     print("\nCluster profiles (municipality-level, mean of qtd_dom-weighted sub-index scores):")
-    print(f"  Note: IG is inverted in the IIC — lower IG score = greater injustice contribution")
+    print(f"  Note: stored ig = 1 − raw_governance → higher ig score = worse governance = greater injustice contribution")
     header = f"  {'Cl':>3}  {'n':>6}  {'IIC':>6}  {'IP':>6}  {'IV':>6}  {'IE':>6}  {'IG':>6}"
     print(header)
     print("  " + "-" * (len(header) - 2))
@@ -340,6 +360,188 @@ def save_outputs(df_all: pd.DataFrame, candidates: pd.DataFrame) -> None:
     print(f"Saved: {OUT_EXCEL}")
 
 
+# ─── Step 6: Visualisations ──────────────────────────────────────────────────
+
+# Colour palette: 4 rose/pink shades with enough lightness contrast for maps.
+_CLUSTER_PALETTE = ["#8c1a2a", "#c93060", "#e87a90", "#f5b8c0", "#1a9641", "#fdae61"]
+
+_DIM_LABELS = {"ip": "IP\n(Grupos Prioritários)", "iv": "IV\n(Vulnerab. Socioecon.)",
+               "ie": "IE\n(Exposição Climática)", "ig": "IG\n(Gestão Municipal)"}
+
+
+def save_plots(df_all: pd.DataFrame) -> None:
+    clusters   = sorted(df_all["cluster"].unique())
+    n_clusters = len(clusters)
+    palette    = _CLUSTER_PALETTE[:n_clusters]
+
+    # ── 1. Z-score heatmap ────────────────────────────────────────────────────
+    overall_means = df_all[DIMS_COLS].mean()
+    overall_stds  = df_all[DIMS_COLS].std()
+
+    z_matrix = []
+    row_labels = []
+    for cl in clusters:
+        sub = df_all[df_all["cluster"] == cl]
+        iic_mean = sub["iic_final"].mean()
+        zs = [(sub[d].mean() - overall_means[d]) / max(overall_stds[d], 1e-9) for d in DIMS_COLS]
+        z_matrix.append(zs)
+        row_labels.append(f"Cluster {cl}  (IIC={iic_mean:.3f}, n={len(sub):,})")
+
+    z_df = pd.DataFrame(z_matrix, index=row_labels,
+                        columns=[_DIM_LABELS[d] for d in DIMS_COLS])
+
+    fig, ax = plt.subplots(figsize=(7, max(2.5, 0.9 * n_clusters + 1.5)))
+    sns.heatmap(
+        z_df, annot=True, fmt=".2f", center=0, cmap="RdYlGn_r",
+        linewidths=0.5, linecolor="white", ax=ax,
+        cbar_kws={"label": "Z-score  (verde = menor injustiça  |  vermelho = maior injustiça)", "shrink": 0.8},
+        vmin=-2, vmax=2,
+    )
+    ax.set_title(f"Perfis dos Clusters — Z-scores por Dimensão (k={N_CLUSTERS})",
+                 fontsize=12, pad=12)
+    ax.set_ylabel("")
+    ax.tick_params(axis="x", labelsize=9)
+    ax.tick_params(axis="y", labelsize=9, rotation=0)
+    fig.tight_layout()
+    fig.savefig(OUT_HEATMAP, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved: {OUT_HEATMAP}")
+
+    # ── 2. PCA scatter ────────────────────────────────────────────────────────
+    mask = df_all[DIMS_COLS].notna().all(axis=1)
+    df_pca = df_all[mask].copy()
+
+    X_scaled = StandardScaler().fit_transform(df_pca[DIMS_COLS].values)
+    pca = PCA(n_components=2, random_state=RANDOM_SEED)
+    coords = pca.fit_transform(X_scaled)
+    var_exp = pca.explained_variance_ratio_ * 100
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    for cl, color in zip(clusters, palette):
+        idx = df_pca["cluster"].values == cl
+        ax.scatter(
+            coords[idx, 0], coords[idx, 1],
+            c=color, label=f"Cluster {cl}", alpha=0.45, s=12, linewidths=0,
+        )
+    ax.set_xlabel(f"PC1 ({var_exp[0]:.1f}% da variância)", fontsize=10)
+    ax.set_ylabel(f"PC2 ({var_exp[1]:.1f}% da variância)", fontsize=10)
+    ax.set_title(f"Municípios por Cluster — PCA das 4 Dimensões (k={N_CLUSTERS})", fontsize=12)
+    ax.legend(title="Cluster", framealpha=0.8, fontsize=9)
+
+    # Annotate loadings
+    loadings = pca.components_.T
+    scale = 1.8 / max(abs(loadings).max(), 1e-9)
+    for i, dim in enumerate(DIMS_COLS):
+        ax.annotate(
+            "", xy=(loadings[i, 0] * scale, loadings[i, 1] * scale), xytext=(0, 0),
+            arrowprops=dict(arrowstyle="->", color="black", lw=1.2),
+        )
+        ax.text(loadings[i, 0] * scale * 1.12, loadings[i, 1] * scale * 1.12,
+                dim.upper(), ha="center", va="center", fontsize=9, fontweight="bold")
+
+    fig.tight_layout()
+    fig.savefig(OUT_PCA, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved: {OUT_PCA}")
+
+    # ── 3. Boxplots ───────────────────────────────────────────────────────────
+    plot_cols = ["iic_final"] + DIMS_COLS
+    col_labels = {
+        "iic_final": "IIC Final",
+        "ip": "IP", "iv": "IV", "ie": "IE", "ig": "IG",
+    }
+    n_cols = len(plot_cols)
+    fig, axes = plt.subplots(1, n_cols, figsize=(3.2 * n_cols, 4.5), sharey=False)
+
+    for ax, col in zip(axes, plot_cols):
+        data_by_cluster = [
+            df_all.loc[df_all["cluster"] == cl, col].dropna().values
+            for cl in clusters
+        ]
+        bp = ax.boxplot(
+            data_by_cluster,
+            patch_artist=True,
+            medianprops=dict(color="white", linewidth=2),
+            whiskerprops=dict(linewidth=1),
+            capprops=dict(linewidth=1),
+            flierprops=dict(marker=".", markersize=2, alpha=0.3),
+            widths=0.55,
+        )
+        for patch, color in zip(bp["boxes"], palette):
+            patch.set_facecolor(color)
+            patch.set_alpha(0.85)
+
+        ax.set_title(col_labels[col], fontsize=11, pad=6)
+        ax.set_xticks(range(1, n_clusters + 1))
+        ax.set_xticklabels([f"C{cl}" for cl in clusters], fontsize=9)
+        ax.set_xlabel("Cluster", fontsize=9)
+        ax.grid(axis="y", linestyle="--", alpha=0.4)
+        ax.tick_params(axis="y", labelsize=8)
+
+    legend_patches = [
+        mpatches.Patch(facecolor=c, alpha=0.85, label=f"Cluster {cl}")
+        for cl, c in zip(clusters, palette)
+    ]
+    fig.legend(handles=legend_patches, loc="upper right", fontsize=9,
+               title="Cluster", framealpha=0.8, bbox_to_anchor=(1.0, 1.0))
+    fig.suptitle(f"Distribuição por Cluster — IIC e Sub-índices (k={N_CLUSTERS})",
+                 fontsize=12, y=1.02)
+    fig.tight_layout()
+    fig.savefig(OUT_BOXPLOTS, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved: {OUT_BOXPLOTS}")
+
+    # ── 4. Brazil choropleth map (full municipality polygons) ────────────────
+    try:
+        import geopandas as gpd
+    except ImportError:
+        print("geopandas not available — skipping map.")
+        return
+
+    print("Building choropleth map (loading geopackages)...")
+    gdf_pais = gpd.read_file(PAIS_GPKG)
+    gdf_uf   = gpd.read_file(UF_GPKG)
+    gdf_mun  = gpd.read_file(MUNICIPIOS_GPKG, columns=["cd_mun", "geometry"])
+
+    # Join cluster assignments
+    df_join = df_all[["cd_mun", "cluster"]].copy()
+    df_join["cd_mun"] = df_join["cd_mun"].astype(str).str.zfill(7)
+    gdf_mun["cd_mun"] = gdf_mun["cd_mun"].astype(str).str.zfill(7)
+    gdf_joined = gdf_mun.merge(df_join, on="cd_mun", how="left")
+
+    color_dict = {cl: palette[i] for i, cl in enumerate(clusters)}
+    gdf_joined["_color"] = gdf_joined["cluster"].map(color_dict).fillna("#cccccc")
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ax.set_facecolor("#cfe2f3")  # ocean background
+
+    # Municipality fills (no edge — state borders provide the visual separation)
+    gdf_joined.plot(ax=ax, color=gdf_joined["_color"],
+                    linewidth=0, edgecolor="none", zorder=2)
+
+    # State borders on top for geographic reference
+    gdf_uf.boundary.plot(ax=ax, color="white", linewidth=0.7, zorder=3)
+
+    ax.set_aspect("equal")
+    ax.set_axis_off()
+    ax.set_title(
+        f"Distribuição dos Clusters por Município — Brasil (k={N_CLUSTERS})",
+        fontsize=12, pad=10,
+    )
+
+    legend_patches = [
+        mpatches.Patch(facecolor=color_dict[cl], label=f"Cluster {cl}  (n={len(df_all[df_all['cluster']==cl]):,})")
+        for cl in clusters
+    ]
+    ax.legend(handles=legend_patches, title="Cluster", fontsize=9,
+              framealpha=0.9, loc="lower right", title_fontsize=9)
+
+    fig.tight_layout()
+    fig.savefig(OUT_MAP, dpi=200, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    print(f"Saved: {OUT_MAP}")
+
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 def main() -> None:
     print("=" * 65)
@@ -366,6 +568,7 @@ def main() -> None:
             )
 
     save_outputs(df_merged, candidates)
+    save_plots(df_merged)
     print(f"\nDone. Outputs in:\n  {OUT_DIR}")
 
 
