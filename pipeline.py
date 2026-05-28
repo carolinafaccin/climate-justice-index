@@ -6,28 +6,48 @@ Runs all stages in order, stopping on the first failure.
 Usage:
     python pipeline.py                  # run all stages
     python pipeline.py --from calc      # start from a specific stage
-    python pipeline.py --only export    # run a single stage
+    python pipeline.py --only report    # run a single stage
     python pipeline.py --skip-tests     # skip the test stage
 
 Stages (in order):
     test        Unit tests                       (pytest tests/)
-    calc        Calculate the index              (run_index.py)
+    calc        Calculate the index              (src/calculation.py)
     report      Generate HTML report             (report/generate_report.py)
 """
 
+import logging
 import subprocess
 import sys
 import argparse
 from pathlib import Path
 
+from src import calculation, utils
+
 VENV_PYTHON = Path(__file__).parent / "venv" / "Scripts" / "python.exe"
 PYTHON = str(VENV_PYTHON) if VENV_PYTHON.exists() else sys.executable
 
+
+def _run_calc() -> bool:
+    utils.setup_logging()
+    logger = logging.getLogger("MAIN")
+    logger.info(">>> STARTING CLIMATE INJUSTICE INDEX CALCULATION <<<")
+    try:
+        calculation.run()
+        logger.info(">>> PROCESS COMPLETED SUCCESSFULLY! <<<")
+        return True
+    except KeyboardInterrupt:
+        logger.warning("Process interrupted by user (Ctrl+C).")
+        return False
+    except Exception as e:
+        logger.critical(f"UNHANDLED ERROR: {e}", exc_info=True)
+        return False
+
+
 # Each stage is (name, command).
-# command is either a script path (str) or a list of args passed directly to subprocess.
+# command is a list of args for subprocess, a script path (str), or a callable.
 STAGES = [
     ("test",   [PYTHON, "-m", "pytest", "tests/", "-v"]),
-    ("calc",   "run_index.py"),
+    ("calc",   _run_calc),
     ("report", "report/generate_report.py"),
 ]
 
@@ -38,6 +58,8 @@ def run_stage(name: str, command) -> bool:
     print(f"\n{'='*60}")
     print(f"  STAGE: {name}")
     print(f"{'='*60}")
+    if callable(command):
+        return command()
     cmd = command if isinstance(command, list) else [PYTHON, command]
     result = subprocess.run(cmd)
     if result.returncode != 0:

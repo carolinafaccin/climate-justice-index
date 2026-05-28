@@ -27,13 +27,16 @@ ______________________________________________________________________
 python pipeline.py
 
 # Só o cálculo do índice
-python run_index.py
+python pipeline.py --only calc
 
 # A partir de uma etapa específica
-python pipeline.py --from cluster
+python pipeline.py --from calc
 
 # Apenas uma etapa
-python pipeline.py --only scatter
+python pipeline.py --only report
+
+# Pular os testes
+python pipeline.py --skip-tests
 ```
 
 Etapas disponíveis: `test` → `calc` → `report`
@@ -43,8 +46,7 @@ ______________________________________________________________________
 ## Estrutura de pastas
 
 ```bash
-pipeline.py                   # Orquestrador completo
-run_index.py                  # Executa só o cálculo do índice
+pipeline.py                   # Orquestrador completo (test → calc → report)
 
 config/
 ├── indicators.json           # Metadados dos indicadores
