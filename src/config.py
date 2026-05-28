@@ -12,8 +12,10 @@ if CONFIG_PATH.exists():
     with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
         config_local = json.load(f)
     DATA_DIR = Path(config_local["data_dir"])
+    RAW_DIR  = Path(config_local["raw_dir"]) if "raw_dir" in config_local else DATA_DIR / "inputs" / "raw"
 else:
     DATA_DIR = BASE_DIR / "data"
+    RAW_DIR  = DATA_DIR / "inputs" / "raw"
 
 # Main Folders
 INPUTS_DIR = DATA_DIR / "inputs"
@@ -21,7 +23,6 @@ OUTPUTS_DIR = DATA_DIR / "outputs"
 
 # Input Folders
 CLEAN_DIR = INPUTS_DIR / "clean"
-RAW_DIR = INPUTS_DIR / "raw"
 
 # Output Folders
 DIAGNOSE_DIR = OUTPUTS_DIR / "diagnose"

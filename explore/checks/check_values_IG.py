@@ -1,16 +1,15 @@
+import sys
 import pandas as pd
-import json
 from pathlib import Path
 
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_PROJECT_ROOT))
+from src import config as cfg  # noqa: E402
+
 def main():
-    # 1. Carregar configuração e caminhos
-    with open('config.local.json', 'r', encoding='utf-8') as f:
-        config = json.load(f)
-    
-    base_dir = Path(config['data_dir'])
-    input_dir = base_dir / "inputs" / "clean"
-    output_path = base_dir / "outputs" / "estatisticas_indicadores_gestao.xlsx"
-    
+    input_dir   = cfg.CLEAN_DIR
+    output_path = cfg.OUTPUTS_DIR / "estatisticas_indicadores_gestao.xlsx"
+
     # Mapeamento corrigido conforme as colunas reais do Parquet
     # Baseado no log de erro, as colunas seguem o padrão g1_inv_abs, etc.
     indicadores = {
@@ -23,14 +22,13 @@ def main():
         "g7": {"file": "br_h3_g7_mun_reconhecimento_cadastro.parquet", "col": "g7_rec_norm", "tipo": "binario"},
         "g8": {"file": "br_h3_g8_mun_reparacao_direitos.parquet", "col": "g8_rep_abs", "tipo": "media"}
     }
-    
+
     # 2. Carregar Metadados Base (Mapeamento H3 -> Município)
-    # Procuramos o arquivo de metadados na pasta data/ (ajuste se o caminho for diferente)
-    metadata_path = base_dir / "br_h3_base_metadata.parquet"
+    metadata_path = cfg.DATA_DIR / "br_h3_base_metadata.parquet"
     if not metadata_path.exists():
         # Tenta procurar na pasta results caso não esteja na raiz de data
-        metadata_path = base_dir / "outputs" / "results" / "br_h3_iic_v2_0_20260427_144058.parquet"
-        
+        metadata_path = cfg.RESULTS_COMPLETE_DIR / "br_h3_iic_v2_0_20260427_144058.parquet"
+
     print(f"Lendo metadados de: {metadata_path.name}")
     df_base = pd.read_parquet(metadata_path, columns=['h3_id', 'cd_mun'])
     df_base['cd_mun'] = df_base['cd_mun'].astype(str)
@@ -41,7 +39,7 @@ def main():
 
     for ref, info in indicadores.items():
         file_path = input_dir / info["file"]
-        
+
         if not file_path.exists():
             print(f"[-] Arquivo não encontrado: {info['file']}")
             continue
@@ -49,10 +47,10 @@ def main():
         # Lê apenas h3_id e o valor do indicador
         try:
             df_ind = pd.read_parquet(file_path, columns=['h3_id', info["col"]])
-            
+
             # Merge com a base para recuperar o cd_mun
             df = df_ind.merge(df_base, on='h3_id', how='left')
-            
+
             if info["tipo"] == "binario":
                 # Agrupa por município e pega o valor (se um hexágono é 1, o município é 1)
                 mun_data = df.groupby('cd_mun')[info["col"]].max()

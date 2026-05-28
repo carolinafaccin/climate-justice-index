@@ -23,7 +23,6 @@ Outputs em cfg.DIAGNOSE_DIR:
 """
 
 import sys
-import json
 import argparse
 from pathlib import Path
 from datetime import datetime
@@ -36,14 +35,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src import config as cfg
 
 
-def _load_data_dir() -> Path:
-    config_path = PROJECT_ROOT / "config" / "config.local.json"
-    with open(config_path, encoding="utf-8") as f:
-        return Path(json.load(f)["data_dir"])
-
-
-_DATA_DIR    = _load_data_dir()
-DEFAULT_DIR  = _DATA_DIR / "inputs/raw/gee/e2_fn_hand_diagnostic"
+DEFAULT_DIR  = cfg.RAW_DIR / "gee/e2_fn_hand_diagnostic"
 DIAGNOSE_DIR = cfg.DIAGNOSE_DIR
 
 # Tetos candidatos a testar (em metros). O atual é 6 m.

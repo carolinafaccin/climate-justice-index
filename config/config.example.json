@@ -1,3 +1,4 @@
 {
-  "data_dir": "PATH_TO_DATA_FOLDER"
+  "data_dir": "PATH_TO_DATA_FOLDER",
+  "raw_dir": "PATH_TO_RAW_DATA_FOLDER"
 }

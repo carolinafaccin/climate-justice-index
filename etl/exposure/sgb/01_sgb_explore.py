@@ -49,23 +49,15 @@ from pathlib import Path
 import geopandas as gpd
 
 # ── Paths via config ───────────────────────────────────────────────────────────
-def _load_data_dir() -> Path:
-    project_root = Path(__file__).resolve().parents[3]
-    config_path = project_root / "config" / "config.local.json"
-    if not config_path.exists():
-        raise FileNotFoundError(
-            f"Config não encontrado: {config_path}\n"
-            "Crie config/config.local.json com {\"data_dir\": \"/caminho/para/data/\"}"
-        )
-    with open(config_path, encoding="utf-8") as f:
-        return Path(json.load(f)["data_dir"])
+_PROJECT_ROOT  = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(_PROJECT_ROOT))
+from src import config as cfg  # noqa: E402
 
-_DATA_DIR             = _load_data_dir()
-DOWNLOAD_DIR          = _DATA_DIR / "inputs/raw/sgb/raw_zips"
-INVENTORY_PATH = _DATA_DIR / "inputs/raw/sgb/01_sgb_inventory.csv"
-COVERAGE_PATH  = _DATA_DIR / "inputs/raw/sgb/01_sgb_coverage.csv"
-MAPPING_PATH   = _DATA_DIR / "inputs/raw/sgb/01_sgb_mapping.json"
-MANIFEST_PATH  = _DATA_DIR / "inputs/raw/sgb/00_sgb_manifest.csv"
+DOWNLOAD_DIR   = cfg.RAW_DIR / "sgb/raw_zips"
+INVENTORY_PATH = cfg.RAW_DIR / "sgb/01_sgb_inventory.csv"
+COVERAGE_PATH  = cfg.RAW_DIR / "sgb/01_sgb_coverage.csv"
+MAPPING_PATH   = cfg.RAW_DIR / "sgb/01_sgb_mapping.json"
+MANIFEST_PATH  = cfg.RAW_DIR / "sgb/00_sgb_manifest.csv"
 
 # ── Classificação por tipo ─────────────────────────────────────────────────────
 # Aplicado tanto ao nome do arquivo quanto às pastas pai dentro do ZIP

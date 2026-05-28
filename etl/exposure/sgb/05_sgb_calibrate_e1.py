@@ -31,7 +31,6 @@ USO:
 """
 
 import sys
-import json
 import argparse
 from pathlib import Path
 from datetime import datetime
@@ -45,14 +44,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src import config as cfg
 
 
-def _load_data_dir() -> Path:
-    config_path = PROJECT_ROOT / "config" / "config.local.json"
-    with open(config_path, encoding="utf-8") as f:
-        return Path(json.load(f)["data_dir"])
-
-
-_DATA_DIR        = _load_data_dir()
-SGB_MASSA_PATH   = _DATA_DIR / "inputs/clean/br_h3_sgb_massa.parquet"
+SGB_MASSA_PATH   = cfg.CLEAN_DIR / "br_h3_sgb_massa.parquet"
 E1_PATH          = cfg.FILES_H3["e1"]
 GEE_DIR          = cfg.RAW_DIR / cfg.INDICATORS["e1"]["source"]["dir"]
 DIAGNOSE_DIR     = cfg.DIAGNOSE_DIR
