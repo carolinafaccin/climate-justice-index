@@ -88,7 +88,6 @@
   <ul class="toc">
     <li><a href="#intro">Sobre o Índice</a></li>
     <li><a href="#composicao">Composição do Índice</a></li>
-    <li><a href="#comparativo">Comparativo entre Municípios</a></li>
     {% if notes_html %}
     <li><a href="#notas">Notas Metodológicas</a></li>
     {% endif %}
@@ -210,51 +209,6 @@
     </script>
   </section>
 
-  <!-- ---- COMPARATIVO ---- -->
-  <section class="page" id="comparativo">
-    <h1 class="section-title">Comparativo entre Municípios</h1>
-    <p class="sankey-note">
-      Visão consolidada dos municípios presentes neste relatório.
-      Valores mais próximos de 1,0 indicam maior injustiça climática.
-      A dimensão IG (Capacidade de Gestão Municipal) é invertida: valores mais altos = maior capacidade = menor injustiça.
-    </p>
-    <div class="comparison-table-wrap">
-      <table class="comparison-table">
-        <thead>
-          <tr>
-            <th>Município</th>
-            <th>IIC Médio</th>
-            <th>Percentil Nacional</th>
-            <th style="color:#f5c896;">IP</th>
-            <th style="color:#adb8dc;">IV</th>
-            <th style="color:#a2cbb0;">IE</th>
-            <th style="color:#d4a3be;">IG</th>
-            <th>Hexágonos</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% set ns = namespace(current_group="") %}
-          {% for city in cities %}
-          {% if city.group != ns.current_group %}
-          {% set ns.current_group = city.group %}
-          <tr class="ct-group-row"><td colspan="8">{{ city.group }}</td></tr>
-          {% endif %}
-          <tr>
-            <td class="ct-city"><a href="#{{ city.slug }}" style="color:inherit;text-decoration:none;">{{ city.nm_mun }}</a></td>
-            <td class="ct-iic">{{ city.iic_mean }}</td>
-            <td class="ct-num">{{ city.national_pct }}%</td>
-            <td class="ct-dim" style="color:#c96a10;">{{ city.dims.ip.city_mean }}</td>
-            <td class="ct-dim" style="color:#3855a3;">{{ city.dims.iv.city_mean }}</td>
-            <td class="ct-dim" style="color:#32864b;">{{ city.dims.ie.city_mean }}</td>
-            <td class="ct-dim" style="color:#9b216c;">{{ city.dims.ig.city_mean }}</td>
-            <td class="ct-num">{{ "{:,}".format(city.n_hexagons) }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </section>
-
   <!-- ================================================================ CITIES -->
   {% for city in cities %}
 
@@ -285,6 +239,9 @@
           <span class="stat-label">Porte Municipal</span>
         </div>
       </div>
+      {% if city.cluster_label %}
+      <div class="cluster-badge">Perfil: {{ city.cluster_label }}</div>
+      {% endif %}
     </div>
   </section>
 

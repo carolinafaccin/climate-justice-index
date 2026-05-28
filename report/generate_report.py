@@ -409,7 +409,6 @@ def _save_overview_figure(
     city_name: str,
     porte: str | None,
     out_path: Path,
-    cluster_label: str | None = None,
 ) -> None:
     """Landscape overview: IIC map (left) | radar + histogram stacked (right)."""
     class_colors = _iic_colors()
@@ -461,22 +460,6 @@ def _save_overview_figure(
     ax_hist.legend(fontsize=7.5, framealpha=0.85)
     ax_hist.spines[["top", "right"]].set_visible(False)
     ax_hist.set_title("Distribuição do IIC Final", fontsize=8.5, pad=4)
-
-    if cluster_label:
-        fig.text(
-            0.5, 0.99,
-            f"Perfil: {cluster_label}",
-            ha="center", va="top",
-            fontsize=8, color="#444",
-            bbox=dict(
-                boxstyle="round,pad=0.35",
-                facecolor="#fef9ed",
-                edgecolor=WRI_YELLOW,
-                linewidth=0.8,
-            ),
-            transform=fig.transFigure,
-            zorder=30,
-        )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     _save_webp(fig, out_path)
@@ -611,7 +594,6 @@ def generate_city(
         city_dim_means, national_dim_means, dim_labels, nm_mun,
         porte,
         city_dir / "overview.png",
-        cluster_label=cluster_label,
     )
     print("  overview.png")
 
@@ -674,17 +656,18 @@ def generate_city(
         }
 
     return {
-        "nm_mun":       nm_mun,
-        "nm_uf":        nm_uf,
-        "slug":         slug,
-        "porte":        porte or "—",
-        "n_hexagons":   len(df),
-        "iic_mean":     fmt3(iic_mean),
-        "iic_max":      fmt3(float(np.nanmax(iic_vals))),
-        "iic_min":      fmt3(float(np.nanmin(iic_vals))),
-        "national_pct": round(nat_pct, 1),
-        "group":        city_row.get("group", ""),
-        "dims":         dims_data,
+        "nm_mun":        nm_mun,
+        "nm_uf":         nm_uf,
+        "slug":          slug,
+        "porte":         porte or "—",
+        "cluster_label": cluster_label or "",
+        "n_hexagons":    len(df),
+        "iic_mean":      fmt3(iic_mean),
+        "iic_max":       fmt3(float(np.nanmax(iic_vals))),
+        "iic_min":       fmt3(float(np.nanmin(iic_vals))),
+        "national_pct":  round(nat_pct, 1),
+        "group":         city_row.get("group", ""),
+        "dims":          dims_data,
         "imgs": {
             "overview": f"imgs/{slug}/overview.webp",
         },
@@ -957,6 +940,19 @@ h2.section-title {
 }
 .stat-label { font-size: 11px; color: #888; margin-top: 2px; }
 
+/* ---- CLUSTER PROFILE BADGE ---- */
+.cluster-badge {
+  display: inline-block;
+  margin-top: 1rem;
+  padding: 4px 14px;
+  border-radius: 20px;
+  border: 1.5px solid var(--yellow);
+  background: #fef9ed;
+  font-size: 12px;
+  color: #555;
+  font-weight: 600;
+}
+
 /* ---- OVERVIEW ---- */
 .overview-block img {
   width: 100%; display: block;
@@ -1035,11 +1031,6 @@ h2.section-title {
   letter-spacing: 0.08em; text-transform: uppercase;
   border-bottom: none;
 }
-.ct-group-row td {
-  background: #f5f5f5; font-size: 11px; font-weight: 700;
-  color: var(--green); letter-spacing: 0.06em; text-transform: uppercase;
-  padding: 0.4rem 0.9rem; border-bottom: 1px solid var(--border);
-}
 .cover-group-label {
   width: 100%; font-size: 10px; font-weight: 700; color: var(--green);
   letter-spacing: 0.1em; text-transform: uppercase;
@@ -1075,27 +1066,6 @@ h2.section-title {
 }
 #back-to-top.visible { opacity: 1; pointer-events: auto; }
 #back-to-top:hover { background: #d49600; }
-
-/* ---- COMPARISON TABLE ---- */
-.comparison-table-wrap { overflow-x: auto; margin-top: 1rem; }
-.comparison-table {
-  width: 100%; border-collapse: collapse; font-size: 0.85rem;
-}
-.comparison-table th {
-  background: var(--dark); color: white;
-  padding: 0.55rem 0.9rem; text-align: left;
-  font-weight: 600; white-space: nowrap;
-}
-.comparison-table td {
-  padding: 0.5rem 0.9rem; border-bottom: 1px solid var(--border);
-  vertical-align: middle;
-}
-.comparison-table tr:last-child td { border-bottom: none; }
-.comparison-table tr:hover td { background: #fef9ed; }
-.ct-city { font-weight: 700; }
-.ct-num { font-variant-numeric: tabular-nums; }
-.ct-iic { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 0.95rem; }
-.ct-dim { font-variant-numeric: tabular-nums; font-size: 0.84rem; font-weight: 600; }
 
 /* ---- LIGHTBOX ---- */
 #lightbox {
@@ -1204,14 +1174,6 @@ h2.section-title {
   .ind-description { font-size: 0.78rem; }
   .indicator-block { margin-bottom: 1.5rem; padding-bottom: 1.5rem; }
 
-  /* Comparison table: keep horizontal scroll */
-  .comparison-table-wrap {
-    margin-left: -1rem; margin-right: -1rem;
-    padding: 0 1rem;
-  }
-  .comparison-table { font-size: 0.78rem; }
-  .comparison-table th, .comparison-table td { padding: 0.4rem 0.6rem; }
-
   /* Sankey: allow horizontal scroll */
   .sankey-wrap { overflow-x: auto; padding: 0.25rem; }
 
@@ -1279,8 +1241,9 @@ h2.section-title {
   .dim-score-bar { break-inside: avoid; }
   h1, h2 { break-after: avoid; }
 
-  /* Smaller indicator figures so 2 fit per page */
-  .ind-fig img { max-height: 11cm; width: auto; max-width: 100%; margin: 0 auto; }
+  /* Smaller figures so 2 fit per page */
+  .ind-fig img     { max-height: 8cm;  width: auto; max-width: 100%; margin: 0 auto; }
+  .overview-block img { max-height: 9cm; width: auto; max-width: 100%; margin: 0 auto; }
 
   /* Sankey: hide Plotly, show static image */
   .sankey-wrap { display: none !important; }
@@ -1288,10 +1251,6 @@ h2.section-title {
     display: block !important; width: 100%;
     border-radius: 6px; border: 1px solid var(--border); margin-top: 1rem;
   }
-
-  /* Comparison table: compact */
-  .comparison-table { font-size: 8pt; }
-  .comparison-table th, .comparison-table td { padding: 0.3rem 0.5rem; }
 
   /* Dim cards: 1 column */
   .dim-cards { grid-template-columns: 1fr; }
