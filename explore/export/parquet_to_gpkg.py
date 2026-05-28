@@ -113,7 +113,7 @@ def build_gdf(df: pd.DataFrame, n_workers: int = N_WORKERS) -> gpd.GeoDataFrame:
 
     df = df.copy()
     df["geometry"] = geometries
-    gdf = gpd.GeoDataFrame(df, geometry="geometry", crs="EPSG:4326")
+    gdf = gpd.GeoDataFrame(df, geometry="geometry", crs=cfg.CRS_WGS84)
     logging.info(f"GeoDataFrame ready: {len(gdf):,} features | CRS: {gdf.crs}")
     return gdf
 

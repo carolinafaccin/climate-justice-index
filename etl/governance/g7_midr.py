@@ -21,8 +21,7 @@ from src import utils
 ICM_DIR = cfg.RAW_DIR / cfg.INDICATORS["g7"]["source"]["dir"]
 SRC_COL  = cfg.INDICATORS["g7"]["source"]["col"]   # "v7"
 
-now = datetime.now().strftime("%Y%m%d_%H%M%S")
-DIAGNOSTIC_TXT = cfg.DIAGNOSE_DIR / f"diagnostic_h3_g7_midr_{now}.txt"
+DIAGNOSTIC_TXT = cfg.diagnostic_path("h3_g7_midr")
 
 col_g7_norm = cfg.COLUMN_MAP["g7"]
 col_g7_abs  = col_g7_norm.replace("_norm", "_abs")
@@ -90,7 +89,7 @@ def main() -> None:
     with open(DIAGNOSTIC_TXT, "w", encoding="utf-8") as f:
         f.write("=" * 60 + "\n")
         f.write("MIDR/ICM — G7 Families in Risk Areas Registry ETL Diagnostic\n")
-        f.write(f"Run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"Run: {datetime.now().strftime(cfg.TS_FORMAT_LOG)}\n")
         f.write("=" * 60 + "\n\n")
         f.write(f"ICM directory : {ICM_DIR}\n")
         f.write(f"Files read    : {[p.name for p in csv_files]}\n")

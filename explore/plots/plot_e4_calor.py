@@ -54,16 +54,7 @@ def main():
 
     DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
-    _cities_path = cfg.BASE_DIR / "config" / "cities.json"
-    if _cities_path.exists():
-        with open(_cities_path, "r", encoding="utf-8") as f:
-            CITIES = json.load(f)["cities"]
-    else:
-        CITIES = [
-            {"nm_mun": "Porto Alegre",   "nm_uf": "Rio Grande do Sul"},
-            {"nm_mun": "São Paulo",      "nm_uf": "São Paulo"},
-            {"nm_mun": "Rio de Janeiro", "nm_uf": "Rio de Janeiro"},
-        ]
+    CITIES = cfg.CITIES_DATA
 
     df_base = pd.read_parquet(cfg.FILES_H3["base_metadata"])
     df_e4   = pd.read_parquet(e4_path, columns=["h3_id", col_abs, col_norm])
@@ -85,7 +76,7 @@ def main():
         if len(df_city) == 0:
             print(f"  {label}: all polygon conversions failed — skipped.")
             return
-        gdf = gpd.GeoDataFrame(df_city, geometry="geometry", crs="EPSG:4326")
+        gdf = gpd.GeoDataFrame(df_city, geometry="geometry", crs=cfg.CRS_WGS84)
 
         safe = (
             label.lower()

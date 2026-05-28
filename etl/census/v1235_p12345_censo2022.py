@@ -10,7 +10,6 @@ import pandas as pd
 import numpy as np
 import sys
 from pathlib import Path
-from datetime import datetime
 
 # ==============================================================================
 # 1. ENVIRONMENT CONFIGURATION
@@ -30,7 +29,7 @@ CENSUS_LOGIC = {
     if "source" in v and "source_dir" in v["source"]
 }
 
-# Columns computed in Section 4 from raw census data × income weight (peso_renda = min(1, 1212/v06004))
+# Columns computed in Section 4 from raw census data × income weight (peso_renda = min(1, SALARIO_MINIMO_REF/v06004))
 # Maps computed column name → source demographic column
 INCOME_WEIGHTED_SRC = {
     "v01040_ren": "v01040",
@@ -51,8 +50,7 @@ REQUIRED_RAW_VARS = sorted((_all_refs - COMPUTED_COLS) | {"v06004"} | set(INCOME
 _source_dir = next(v["source"]["source_dir"] for v in cfg.INDICATORS.values() if "source" in v and "source_dir" in v["source"])
 input_dir = cfg.RAW_DIR / _source_dir
 h3_path = cfg.FILES_H3["base_metadata"]
-now = datetime.now().strftime("%Y%m%d_%H%M%S")
-DIAGNOSTIC_TXT = cfg.DIAGNOSE_DIR / f'diagnostic_h3_censo2022_{now}.txt'
+DIAGNOSTIC_TXT = cfg.diagnostic_path("h3_censo2022")
 
 # ==============================================================================
 # 4. DATA EXTRACTION (READING CSVS)
@@ -93,7 +91,7 @@ def main() -> None:
         df_censo['v06004'] = pd.to_numeric(df_censo['v06004'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
         if 'v06001' in df_censo.columns:
             df_censo['v06004_v06001'] = df_censo['v06004'] * df_censo['v06001']
-        # peso_renda: sectors with mean income <= 1212 get weight 1.0; above that, weight is inversely proportional.
+        # peso_renda: sectors with mean income <= cfg.SALARIO_MINIMO_REF get weight 1.0; above that, weight is inversely proportional.
         # Sectors with no registered income (v06004=0) receive weight 1.0 (maximum vulnerability).
         peso_renda = np.where(df_censo['v06004'] > 0, np.minimum(1.0, cfg.SALARIO_MINIMO_REF / df_censo['v06004']), 1.0)
         for dst, src in INCOME_WEIGHTED_SRC.items():

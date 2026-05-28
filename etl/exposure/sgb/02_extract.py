@@ -61,7 +61,7 @@ MANIFEST_PATH   = cfg.RAW_DIR / "sgb/00_sgb_manifest.csv"
 INVENTORY_PATH  = cfg.RAW_DIR / "sgb/01_sgb_inventory.csv"
 MAPPING_PATH    = cfg.RAW_DIR / "sgb/01_sgb_mapping.json"
 POR_MUN_DIR     = cfg.RAW_DIR / "sgb/por_municipio"
-MUNICIPIOS_PATH = cfg.RAW_DIR / "ibge/malha_municipal/2024/municipios.gpkg"
+MUNICIPIOS_PATH = cfg.MALHA_MUNICIPAL_DIR / "municipios.gpkg"
 PROGRESS_FILE   = POR_MUN_DIR / "02_progress.json"
 FAILURES_PATH   = cfg.RAW_DIR / "sgb/02_failures.csv"
 

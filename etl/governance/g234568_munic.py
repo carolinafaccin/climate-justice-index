@@ -8,7 +8,6 @@ Output: one parquet per indicator written to cfg.CLEAN_DIR
 import pandas as pd
 import sys
 from pathlib import Path
-from datetime import datetime
 
 # ==============================================================================
 # 1. ENVIRONMENT CONFIGURATION
@@ -22,8 +21,7 @@ from src import utils
 # ==============================================================================
 # 2. PATHS AND DIAGNOSTIC DEFINITION
 # ==============================================================================
-now = datetime.now().strftime("%Y%m%d_%H%M%S")
-DIAGNOSTIC_TXT = cfg.DIAGNOSE_DIR / f'diagnostic_munic_h3_{now}.txt'
+DIAGNOSTIC_TXT = cfg.diagnostic_path("munic_h3")
 
 # Columns used as join keys in MUNIC CSVs
 ID_COLS = ['cd_mun', 'sigla_uf', 'cd_uf', 'nm_mun']

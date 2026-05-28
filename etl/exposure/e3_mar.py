@@ -23,8 +23,7 @@ from src import utils
 # ==============================================================================
 GEE_DIR = cfg.RAW_DIR / cfg.INDICATORS["e3"]["source"]["dir"]
 
-now = datetime.now().strftime("%Y%m%d_%H%M%S")
-DIAGNOSTIC_TXT = cfg.DIAGNOSE_DIR / f"diagnostic_h3_e3_mar_{now}.txt"
+DIAGNOSTIC_TXT = cfg.diagnostic_path("h3_e3_mar")
 
 col_e3_norm = cfg.COLUMN_MAP["e3"]
 col_e3_abs  = col_e3_norm.replace("_norm", "_abs")
@@ -112,7 +111,7 @@ def _write_diagnostic(df_all, df_final, csv_files):
     with open(DIAGNOSTIC_TXT, "w", encoding="utf-8") as f:
         f.write("=" * 60 + "\n")
         f.write("GEE Copernicus DEM — E3 Sea Level Rise ETL Diagnostic\n")
-        f.write(f"Run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"Run: {datetime.now().strftime(cfg.TS_FORMAT_LOG)}\n")
         f.write("=" * 60 + "\n\n")
         f.write(f"GEE directory : {GEE_DIR}\n")
         f.write(f"Files read    : {len(csv_files)}\n\n")

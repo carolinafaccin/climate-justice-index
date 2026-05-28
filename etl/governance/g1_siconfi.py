@@ -9,7 +9,6 @@ import pandas as pd
 import numpy as np
 import sys
 from pathlib import Path
-from datetime import datetime
 
 # ==============================================================================
 # 1. ENVIRONMENT CONFIGURATION
@@ -42,8 +41,7 @@ col_abs  = col_norm.replace('_norm', '_abs')
 col_log  = col_norm.replace('_norm', '_log')
 
 # Diagnostic log configuration
-now = datetime.now().strftime("%Y%m%d_%H%M%S")
-DIAGNOSTIC_TXT = cfg.DIAGNOSE_DIR / f'diagnostic_h3_g1_siconfi_{now}.txt'
+DIAGNOSTIC_TXT = cfg.diagnostic_path("h3_g1_siconfi")
 
 # ==============================================================================
 # 4. HELPER FUNCTIONS

@@ -125,7 +125,7 @@ def run_h3() -> None:
     # =========================================================================
 
     # 4. Save full results file (timestamped — never overwrites previous runs)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now().strftime(cfg.TS_FORMAT_FILE)
     path_output = cfg.FILES['output']['results_dir'] / f"{cfg.IIC_FILE_PREFIX}_{ts}.parquet"
     utils.save_parquet(df_calculated, path_output)
     logging.info(f"Full results saved: {path_output.name}")

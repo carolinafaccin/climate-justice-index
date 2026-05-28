@@ -61,7 +61,7 @@ OUT_PCA      = OUT_DIR / f"cluster_pca_k{N_CLUSTERS}.png"
 OUT_BOXPLOTS = OUT_DIR / f"cluster_boxplots_k{N_CLUSTERS}.png"
 OUT_MAP      = OUT_DIR / f"cluster_mapa_k{N_CLUSTERS}.png"
 
-MALHA_DIR       = cfg.RAW_DIR / "ibge" / "malha_municipal" / "2024"
+MALHA_DIR       = cfg.MALHA_MUNICIPAL_DIR
 MUNICIPIOS_GPKG = MALHA_DIR / "municipios.gpkg"
 UF_GPKG         = MALHA_DIR / "uf.gpkg"
 PAIS_GPKG       = MALHA_DIR / "pais.gpkg"

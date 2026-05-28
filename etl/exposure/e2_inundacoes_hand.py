@@ -46,8 +46,7 @@ SGB_ALTA_FRAC_MIN   = _e2_src["sgb_alta_frac_min"]
 SGB_COVERAGE_MIN    = _e2_src["sgb_coverage_min"]
 SGB_OVERRIDE_SCORE  = _e2_src["sgb_override_score"]
 
-now = datetime.now().strftime("%Y%m%d_%H%M%S")
-DIAGNOSTIC_TXT = cfg.DIAGNOSE_DIR / f"diagnostic_h3_e2_inundacoes_hand_{now}.txt"
+DIAGNOSTIC_TXT = cfg.diagnostic_path("h3_e2_inundacoes_hand")
 
 col_e2_norm = cfg.COLUMN_MAP["e2"]
 col_e2_abs  = col_e2_norm.replace("_norm", "_abs")
@@ -151,7 +150,7 @@ def _write_diagnostic(df_all, df_final, csv_files):
     with open(DIAGNOSTIC_TXT, "w", encoding="utf-8") as f:
         f.write("=" * 60 + "\n")
         f.write("HAND + JRC — E2 Flood Susceptibility ETL Diagnostic\n")
-        f.write(f"Run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"Run: {datetime.now().strftime(cfg.TS_FORMAT_LOG)}\n")
         f.write("=" * 60 + "\n\n")
         f.write(f"GEE directory : {GEE_DIR}\n")
         f.write(f"Files read    : {len(csv_files)}\n")

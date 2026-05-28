@@ -399,7 +399,7 @@ def main() -> None:
 
     print("=" * 60)
     print("SGB — Reconciliação do Status do Pipeline")
-    print(f"Run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Run: {datetime.now().strftime(cfg.TS_FORMAT_LOG)}")
     print("=" * 60)
 
     print("\nCarregando artefatos...")

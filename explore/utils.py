@@ -61,4 +61,4 @@ def build_gdf(df: pd.DataFrame) -> gpd.GeoDataFrame:
     """Convert a DataFrame with an h3_id column into a GeoDataFrame (EPSG:4326)."""
     df = df.copy()
     df["geometry"] = df["h3_id"].apply(h3_to_polygon)
-    return gpd.GeoDataFrame(df, geometry="geometry", crs="EPSG:4326")
+    return gpd.GeoDataFrame(df, geometry="geometry", crs=cfg.CRS_WGS84)

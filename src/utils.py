@@ -9,7 +9,7 @@ from . import config as cfg  # We need to import config to know where the logs f
 # Function to configure logs (Remove any old logging.basicConfig from your project)
 def setup_logging() -> None:
     # Generates a unique filename with the current date/time (e.g., pipeline_20260226_093000.log)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime(cfg.TS_FORMAT_FILE)
     log_file = cfg.LOGS_DIR / f"pipeline_{timestamp}.log"
 
     # Create a root logger

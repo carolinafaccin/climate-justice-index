@@ -21,8 +21,7 @@ from src import utils
 # ==============================================================================
 GEE_DIR = cfg.RAW_DIR / cfg.INDICATORS["e4"]["source"]["dir"]
 
-now = datetime.now().strftime("%Y%m%d_%H%M%S")
-DIAGNOSTIC_TXT = cfg.DIAGNOSE_DIR / f"diagnostic_h3_e4_calor_{now}.txt"
+DIAGNOSTIC_TXT = cfg.diagnostic_path("h3_e4_calor")
 
 col_e4_norm = cfg.COLUMN_MAP["e4"]
 col_e4_abs  = col_e4_norm.replace("_norm", "_abs")
@@ -108,7 +107,7 @@ def _write_diagnostic(df_all, df_final, csv_files):
     with open(DIAGNOSTIC_TXT, "w", encoding="utf-8") as f:
         f.write("=" * 60 + "\n")
         f.write("GEE Landsat — E4 Extreme Heat ETL Diagnostic\n")
-        f.write(f"Run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"Run: {datetime.now().strftime(cfg.TS_FORMAT_LOG)}\n")
         f.write("=" * 60 + "\n\n")
         f.write(f"GEE directory : {GEE_DIR}\n")
         f.write(f"Files read    : {len(csv_files)}\n\n")

@@ -27,8 +27,7 @@ MIN_YEARS     = _e5_src["min_years"]  # minimum years of recurrent exposure to s
 
 H3_RES = cfg.H3_RES
 
-now = datetime.now().strftime("%Y%m%d_%H%M%S")
-DIAGNOSTIC_TXT = cfg.DIAGNOSE_DIR / f"diagnostic_h3_e5_queimadas_{now}.txt"
+DIAGNOSTIC_TXT = cfg.diagnostic_path("h3_e5_queimadas")
 
 col_e5_norm = cfg.COLUMN_MAP["e5"]
 col_e5_abs  = col_e5_norm.replace("_norm", "_abs")
@@ -127,7 +126,7 @@ def _write_diagnostic(df_agg, df_final, n_years, year_exposure):
     with open(DIAGNOSTIC_TXT, "w", encoding="utf-8") as f:
         f.write("=" * 60 + "\n")
         f.write("INPE Queimadas ETL Diagnostic\n")
-        f.write(f"Run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"Run: {datetime.now().strftime(cfg.TS_FORMAT_LOG)}\n")
         f.write("=" * 60 + "\n\n")
         f.write(f"Fire hotspots dir   : {QUEIMADAS_DIR}\n")
         f.write(f"Years processed     : {sorted(year_exposure.keys())}\n")

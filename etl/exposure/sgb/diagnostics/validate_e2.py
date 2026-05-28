@@ -394,7 +394,7 @@ def write_diagnostic(
     with open(txt_path, "w", encoding="utf-8") as f:
         f.write("=" * 70 + "\n")
         f.write("SGB — Validação Threshold E2 (flood_score vs SGB Inundações)\n")
-        f.write(f"Run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"Run: {datetime.now().strftime(cfg.TS_FORMAT_LOG)}\n")
         f.write("=" * 70 + "\n\n")
 
         f.write("--- Parâmetros ---\n")
@@ -502,7 +502,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now().strftime(cfg.TS_FORMAT_FILE)
     print("=" * 70)
     print("SGB — Validação Threshold E2 (flood_score vs SGB Inundações)")
     print("=" * 70)

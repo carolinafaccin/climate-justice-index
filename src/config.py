@@ -1,6 +1,7 @@
 import os
 import json
 from pathlib import Path
+from datetime import datetime
 
 # ==============================================================================
 # 1. LOCAL PATHS CONFIGURATION
@@ -35,6 +36,10 @@ RESULTS_GPKG_DIR      = RESULTS_DIR / "complete_gpkg"
 
 LOGS_DIR = BASE_DIR / "logs"
 
+# IBGE geographic mesh — single vintage constant used by all scripts
+IBGE_MALHA_VINTAGE  = "2024"
+MALHA_MUNICIPAL_DIR = RAW_DIR / "ibge" / "malha_municipal" / IBGE_MALHA_VINTAGE
+
 
 def ensure_output_dirs() -> None:
     """Create project output directories. Called at module load; also callable explicitly."""
@@ -44,6 +49,13 @@ def ensure_output_dirs() -> None:
 
 
 ensure_output_dirs()
+
+
+def diagnostic_path(name: str) -> Path:
+    """Return a timestamped diagnostic txt path: DIAGNOSE_DIR/diagnostic_{name}_{ts}.txt"""
+    ts = datetime.now().strftime(TS_FORMAT_FILE)
+    return DIAGNOSE_DIR / f"diagnostic_{name}_{ts}.txt"
+
 
 # ==============================================================================
 # 2. GLOBAL PROJECT DEFINITIONS
@@ -55,6 +67,11 @@ COL_ID_H3 = 'h3_id'
 # Brazilian standard CRS (used across ETL scripts)
 CRS_LATLON = "EPSG:4674"   # SIRGAS 2000 — geographic (degrees)
 CRS_METRIC = "EPSG:5880"   # Brazil Polyconic — metric projection for area/distance calculations
+CRS_WGS84  = "EPSG:4326"   # WGS84 — native CRS of H3 and most third-party geodata
+
+# Timestamp formats
+TS_FORMAT_FILE = "%Y%m%d_%H%M%S"    # compact, safe for filenames
+TS_FORMAT_LOG  = "%Y-%m-%d %H:%M:%S"  # human-readable, for log/diagnostic text
 
 # Versioning
 INDEX_VERSION = "v2.0"
@@ -131,6 +148,14 @@ else:
         "sweep_step_coarse":       0.05,
         "sweep_step_fine":         0.01,
     }
+
+# Cities reference list (used by report and visualization scripts)
+_CITIES_PATH = BASE_DIR / "config" / "cities.json"
+if _CITIES_PATH.exists():
+    with open(_CITIES_PATH, 'r', encoding='utf-8') as _cf:
+        CITIES_DATA: list[dict] = json.load(_cf).get("cities", [])
+else:
+    CITIES_DATA = []
 
 # Flatten nested structure: {key: {dimension, name, abbr, ...}}
 INDICATORS = {}

@@ -197,7 +197,7 @@ fig.suptitle(
     fontsize=12, y=1.01
 )
 
-now        = datetime.now().strftime("%Y%m%d_%H%M%S")
+now        = datetime.now().strftime(cfg.TS_FORMAT_FILE)
 graphs_dir = cfg.FIGURES_DIR / "graphs"
 graphs_dir.mkdir(parents=True, exist_ok=True)
 out_path   = graphs_dir / f"dimension_weights_{now}.png"

@@ -48,13 +48,12 @@ IMGS_DIR   = DOCS_DIR / "imgs"
 ASSETS_DIR = DOCS_DIR / "assets"
 TMPL_DIR   = SCRIPT_DIR / "templates"
 
-MUNICIPALITIES_GPKG  = cfg.RAW_DIR / "ibge" / "malha_municipal" / "2024" / "municipios.gpkg"
+MUNICIPALITIES_GPKG  = cfg.MALHA_MUNICIPAL_DIR / "municipios.gpkg"
 TIPOLOGIAS_CSV       = cfg.RAW_DIR / "ibge" / "tipologias" / "tipologias_municipios_brasil.csv"
-COASTAL_MUNS_CSV     = cfg.RAW_DIR / "ibge" / "malha_municipal" / "2024" / "municipios_defrontantes_com_o_mar.csv"
+COASTAL_MUNS_CSV     = cfg.MALHA_MUNICIPAL_DIR / "municipios_defrontantes_com_o_mar.csv"
 CLUSTER_ANALYSIS_DIR = cfg.OUTPUTS_DIR / "analysis"
 
-with open(PROJECT_ROOT / "config" / "cities.json", encoding="utf-8") as _f:
-    CITIES = json.load(_f)["cities"]
+CITIES = cfg.CITIES_DATA
 
 # ==============================================================================
 # VISUAL CONSTANTS (from config/report_config.json)
@@ -326,7 +325,7 @@ def load_municipalities() -> gpd.GeoDataFrame | None:
         print(f"  [WARNING] Municipal mesh not found: {MUNICIPALITIES_GPKG}")
         return None
     print("Loading IBGE municipal mesh...")
-    gdf = gpd.read_file(MUNICIPALITIES_GPKG).to_crs("EPSG:4326")
+    gdf = gpd.read_file(MUNICIPALITIES_GPKG).to_crs(cfg.CRS_WGS84)
     _MUNICIPALITIES_GDF = gdf
     print(f"  {len(gdf):,} municipalities loaded.")
     return gdf
