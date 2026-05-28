@@ -2,6 +2,7 @@ import pandas as pd
 import logging
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 
 # Internal imports
 from . import config as cfg
@@ -81,7 +82,7 @@ def _merge_indicators(df_master: pd.DataFrame, files_dict: dict, join_key: str) 
     return df_master
 
 
-def consolidate_inputs(files_dict: dict, join_key: str) -> pd.DataFrame:
+def consolidate_inputs(files_dict: dict, join_key: str) -> Optional[pd.DataFrame]:
     """Load base H3 metadata and left-join all indicator files. Returns one row per hexagon."""
     path_base = files_dict.get("base_metadata")
     if not path_base or not path_base.is_file():
@@ -90,7 +91,7 @@ def consolidate_inputs(files_dict: dict, join_key: str) -> pd.DataFrame:
     df_master = _load_base_metadata(path_base, join_key)
     return _merge_indicators(df_master, files_dict, join_key)
 
-def run_h3():
+def run_h3() -> None:
     """Run the full H3 pipeline: validate → consolidate → calculate → save outputs."""
     logging.info("=== STARTING PIPELINE: H3 GRID (SIMPLIFIED) ===")
 
@@ -195,7 +196,7 @@ def _save_dimension_parquets(df: pd.DataFrame, ts: str) -> None:
                     "Reduce MAX_COLS_PER_FILE or use Git LFS."
                 )
 
-def run():
+def run() -> None:
     """Entry point called by run.py; wraps run_h3 with top-level error handling."""
     try:
         run_h3()

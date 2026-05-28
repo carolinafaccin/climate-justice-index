@@ -1,0 +1,9 @@
+{
+  "simplify_geom_m": 5.0,
+  "simplify_h3_intersect_m": 20.0,
+  "risk_class_min": 4,
+  "sgb_ref_threshold": 0.3,
+  "sgb_coverage_min": 0.5,
+  "sweep_step_coarse": 0.05,
+  "sweep_step_fine": 0.01
+}

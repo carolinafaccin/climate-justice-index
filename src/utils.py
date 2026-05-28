@@ -7,7 +7,7 @@ from datetime import datetime
 from . import config as cfg  # We need to import config to know where the logs folder is
 
 # Function to configure logs (Remove any old logging.basicConfig from your project)
-def setup_logging():
+def setup_logging() -> None:
     # Generates a unique filename with the current date/time (e.g., pipeline_20260226_093000.log)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = cfg.LOGS_DIR / f"pipeline_{timestamp}.log"
@@ -89,7 +89,7 @@ def normalize_minmax(series: pd.Series, winsorize: bool = False, limits: tuple =
         
     return (s - min_val) / (max_val - min_val)
 
-def save_parquet(df: pd.DataFrame, path: Path):
+def save_parquet(df: pd.DataFrame, path: Path) -> None:
     """Saves the Parquet file, overwriting the previous version. Creates the destination folder if it doesn't exist."""
     path = Path(path)
     # Ensure destination folder exists (e.g. data/inputs/clean)
@@ -98,3 +98,44 @@ def save_parquet(df: pd.DataFrame, path: Path):
     logging.info(f"Saving Parquet to: {path.name}...")
     df.to_parquet(path)
     logging.info("Saved successfully.")
+
+
+def read_csv_columns(path: Path, cols: list[str]) -> pd.DataFrame:
+    """Read CSV keeping only `cols`; falls back to full read + column lowercasing if usecols raises ValueError."""
+    try:
+        return pd.read_csv(path, usecols=cols)
+    except ValueError:
+        df = pd.read_csv(path)
+        df.columns = df.columns.str.lower()
+        missing = [c for c in cols if c not in df.columns]
+        if missing:
+            raise ValueError(
+                f"{Path(path).name}: columns {missing} not found after lowercasing. "
+                f"Available: {sorted(df.columns.tolist())}"
+            )
+        print(f"   NOTE: {Path(path).name} — usecols fallback triggered (column names required lowercasing)")
+        return df[cols]
+
+
+def h3_latlng_to_cell(lat: float, lon: float, res: int) -> str:
+    """Convert lat/lon to H3 cell, compatible with h3-py v3 and v4."""
+    import h3
+    return h3.latlng_to_cell(lat, lon, res) if hasattr(h3, "latlng_to_cell") else h3.geo_to_h3(lat, lon, res)
+
+
+def h3_grid_disk(cell: str, k: int) -> set:
+    """Return grid disk (k-ring) of H3 cells, compatible with h3-py v3 and v4."""
+    import h3
+    return h3.grid_disk(cell, k) if hasattr(h3, "grid_disk") else h3.k_ring(cell, k)
+
+
+def h3_cell_to_latlng(cell: str) -> tuple:
+    """Return (lat, lng) centroid of an H3 cell, compatible with h3-py v3 and v4."""
+    import h3
+    return h3.cell_to_latlng(cell) if hasattr(h3, "cell_to_latlng") else h3.h3_to_geo(cell)
+
+
+def h3_cell_to_boundary(cell: str) -> list:
+    """Return boundary (lat, lng) coords of an H3 cell, compatible with h3-py v3 and v4."""
+    import h3
+    return h3.cell_to_boundary(cell) if hasattr(h3, "cell_to_boundary") else h3.h3_to_geo_boundary(cell)

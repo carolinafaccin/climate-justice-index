@@ -32,15 +32,19 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
-PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
-sys.path.append(PROJECT_ROOT)
+_ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pipeline.py").exists())
+sys.path.insert(0, str(_ROOT))
 from src import config as cfg
 from src import utils
 
 # ==============================================================================
 # 1. PATHS
 # ==============================================================================
-GEE_DIR = cfg.RAW_DIR / cfg.INDICATORS["e2"]["source"]["dir"]
+_e2_src             = cfg.INDICATORS["e2"]["source"]
+GEE_DIR             = cfg.RAW_DIR / _e2_src["dir"]
+SGB_ALTA_FRAC_MIN   = _e2_src["sgb_alta_frac_min"]
+SGB_COVERAGE_MIN    = _e2_src["sgb_coverage_min"]
+SGB_OVERRIDE_SCORE  = _e2_src["sgb_override_score"]
 
 now = datetime.now().strftime("%Y%m%d_%H%M%S")
 DIAGNOSTIC_TXT = cfg.DIAGNOSE_DIR / f"diagnostic_h3_e2_inundacoes_hand_{now}.txt"
@@ -67,22 +71,17 @@ def main():
 
     parts = []
     for path in csv_files:
-        try:
-            df = pd.read_csv(path, usecols=["h3_id", "flood_score"])
-        except ValueError:
-            df = pd.read_csv(path)
-            df.columns = df.columns.str.lower()
-            df = df[["h3_id", "flood_score"]]
+        df = utils.read_csv_columns(path, ["h3_id", "flood_score"])
         parts.append(df)
         print(f"   [+] {path.name}  ({len(df):,} hexagons)")
 
     df_all = pd.concat(parts, ignore_index=True)
     print(f"\n   Total: {len(df_all):,} hexagons loaded")
 
-    # Deduplicate (border hexagons may appear in multiple UF exports)
+    # Border hexagons may appear in multiple UF-level GEE exports — deduplicate.
     dupes = df_all["h3_id"].duplicated().sum()
     if dupes > 0:
-        print(f"   WARNING: {dupes:,} duplicate h3_ids - keeping first value")
+        print(f"   NOTE: {dupes:,} border hexagons in multiple UF exports ({100*dupes/len(df_all):.1f}%) — keeping first")
         df_all = df_all.drop_duplicates(subset="h3_id", keep="first")
 
     # ==============================================================================
@@ -93,13 +92,13 @@ def main():
     if SGB_H3_PATH.exists():
         sgb = pd.read_parquet(SGB_H3_PATH, columns=["h3_id", "sgb_alta_mta_frac", "sgb_coverage_frac"])
         df_all = df_all.merge(sgb, on="h3_id", how="left")
-        sgb_mask = (df_all["sgb_alta_mta_frac"] > 0.3) & (df_all["sgb_coverage_frac"] >= 0.5)
-        df_all.loc[sgb_mask, "flood_score"] = 1.0
+        sgb_mask = (df_all["sgb_alta_mta_frac"] > SGB_ALTA_FRAC_MIN) & (df_all["sgb_coverage_frac"] >= SGB_COVERAGE_MIN)
+        df_all.loc[sgb_mask, "flood_score"] = SGB_OVERRIDE_SCORE
         df_all["sgb_override"] = sgb_mask.fillna(False)
         df_all = df_all.drop(columns=["sgb_alta_mta_frac", "sgb_coverage_frac"])
         n_override = int(sgb_mask.sum())
-        print(f"   SGB override applied: {n_override:,} hexagons set to flood_score=1.00")
-        print(f"   (sgb_alta_mta_frac > 0.3 AND sgb_coverage_frac >= 0.5)")
+        print(f"   SGB override applied: {n_override:,} hexagons set to flood_score={SGB_OVERRIDE_SCORE}")
+        print(f"   (sgb_alta_mta_frac > {SGB_ALTA_FRAC_MIN} AND sgb_coverage_frac >= {SGB_COVERAGE_MIN})")
     else:
         df_all["sgb_override"] = False
         print(f"   WARNING: SGB parquet not found at {SGB_H3_PATH} — overlay skipped")

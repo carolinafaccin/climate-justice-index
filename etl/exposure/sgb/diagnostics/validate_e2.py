@@ -43,8 +43,8 @@ import numpy as np
 import pandas as pd
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(PROJECT_ROOT))
+_ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pipeline.py").exists())
+sys.path.insert(0, str(_ROOT))
 from src import config as cfg
 
 
@@ -491,13 +491,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="SGB — Validação threshold E2 vs SGB inundações"
     )
+    _defaults = cfg.SGB_CFG
     parser.add_argument(
-        "--sgb-ref", type=float, default=0.3,
-        help="Threshold sgb_alta_mta_frac para classificar hexágono como alto risco SGB (padrão: 0.3)"
+        "--sgb-ref", type=float, default=_defaults["sgb_ref_threshold"],
+        help=f"Threshold sgb_alta_mta_frac para classificar hexágono como alto risco SGB (padrão: {_defaults['sgb_ref_threshold']})"
     )
     parser.add_argument(
-        "--min-coverage", type=float, default=0.5,
-        help="Cobertura SGB mínima do hexágono (padrão: 0.5)"
+        "--min-coverage", type=float, default=_defaults["sgb_coverage_min"],
+        help=f"Cobertura SGB mínima do hexágono (padrão: {_defaults['sgb_coverage_min']})"
     )
     args = parser.parse_args()
 

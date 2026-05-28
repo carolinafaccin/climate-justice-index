@@ -51,42 +51,31 @@ TMPL_DIR   = SCRIPT_DIR / "templates"
 MUNICIPALITIES_GPKG  = cfg.RAW_DIR / "ibge" / "malha_municipal" / "2024" / "municipios.gpkg"
 TIPOLOGIAS_CSV       = cfg.RAW_DIR / "ibge" / "tipologias" / "tipologias_municipios_brasil.csv"
 COASTAL_MUNS_CSV     = cfg.RAW_DIR / "ibge" / "malha_municipal" / "2024" / "municipios_defrontantes_com_o_mar.csv"
+CLUSTER_ANALYSIS_DIR = cfg.OUTPUTS_DIR / "analysis"
 
 with open(PROJECT_ROOT / "config" / "cities.json", encoding="utf-8") as _f:
     CITIES = json.load(_f)["cities"]
 
 # ==============================================================================
-# VISUAL CONSTANTS
+# VISUAL CONSTANTS (from config/report_config.json)
 # ==============================================================================
-DPI              = 120
-OVERVIEW_FIG_SIZE = (15, 7.5)  # landscape: map left + radar/hist stacked right
-IND_FIG_SIZE      = (12, 5.5)  # landscape combined indicator figure
+_REPORT_CFG_PATH = PROJECT_ROOT / "config" / "report_config.json"
+with open(_REPORT_CFG_PATH, 'r', encoding='utf-8') as _f:
+    _rcfg = json.load(_f)
 
-WRI_YELLOW = "#F0AB00"
-WRI_GREEN  = "#32864B"
+DPI               = _rcfg["dpi"]
+OVERVIEW_FIG_SIZE = tuple(_rcfg["overview_fig_size"])
+IND_FIG_SIZE      = tuple(_rcfg["ind_fig_size"])
+WRI_YELLOW        = _rcfg["wri_yellow"]
+WRI_GREEN         = _rcfg["wri_green"]
+DIM_COLORS        = _rcfg["dim_colors"]
+CLASSIFICATION_METHOD_OVERVIEW   = _rcfg["classification_method_overview"]
+CLASSIFICATION_METHOD_INDICATORS = _rcfg["classification_method_indicators"]
+WEBP_QUALITY      = _rcfg["webp_quality"]
 
-DIM_COLORS = {
-    "ip": "#eb8026",  # orange  – Grupos Prioritários
-    "iv": "#3855a3",  # blue    – Vulnerabilidade
-    "ie": "#32864b",  # green   – Exposição
-    "ig": "#9b216c",  # purple  – Capacidade de Gestão Municipal
-}
 DIM_ORDER    = ["ip", "iv", "ie", "ig"]
 ALL_IND_KEYS = diag_utils.ALL_INDICATOR_KEYS
 ABBR_TO_DIM  = {meta["abbr"].lower(): dim for dim, meta in cfg.DIMENSION_META.items()}
-
-# ==============================================================================
-# CLASSIFICATION METHOD FOR MAP LEGENDS
-# ==============================================================================
-# Overview (visão geral de cada município): sempre quintiles por porte
-CLASSIFICATION_METHOD_OVERVIEW = "quintiles"
-
-# Indicadores individuais (e1, e2, e3, etc.):
-# "quintiles" → 5 classes by municipal size (porte) — different bounds per porte
-# "equal_intervals" → 5 equal-width classes based on national min/max — comparable across all Brazil
-CLASSIFICATION_METHOD_INDICATORS = "equal_intervals"
-
-WEBP_QUALITY = 82  # 0-100; 82 gives ~68% size reduction vs PNG with negligible quality loss
 
 def _save_webp(fig, path: Path, dpi: int = DPI) -> None:
     """Save a matplotlib figure as WebP via Pillow (significantly smaller than PNG)."""
@@ -114,6 +103,8 @@ if not _results:
     )
 if not _results:
     raise FileNotFoundError(f"No results found in {cfg.FILES['output']['results_dir']}.\nRun `python run_index.py` first.")
+if len(_results) > 1:
+    print(f"   NOTE: {len(_results)} result files found — using most recent: {_results[0].name}")
 RESULTS_FILE = _results[0]
 
 # ==============================================================================
@@ -164,6 +155,58 @@ def load_porte_map() -> dict[str, str]:
     df = pd.read_csv(TIPOLOGIAS_CSV, sep=";", usecols=["cd_mun", "porte_munic"], dtype=str)
     df["cd_mun"] = df["cd_mun"].str.zfill(7)
     return dict(zip(df["cd_mun"], df["porte_munic"]))
+
+
+def load_cluster_profiles() -> dict[str, str]:
+    """Return {cd_mun_7digits: perfil_name} from cluster analysis outputs.
+    Returns {} if files are absent or the 'perfis' column is not yet filled."""
+    csv_files = sorted(
+        CLUSTER_ANALYSIS_DIR.glob("clusters_municipios_k*.csv"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not csv_files:
+        print("  [INFO] No cluster CSV found — cluster profile labels will be omitted.")
+        return {}
+
+    csv_path  = csv_files[0]
+    k_str     = csv_path.stem.rsplit("_k", 1)[-1]
+    xlsx_path = CLUSTER_ANALYSIS_DIR / f"candidatos_estudo_de_caso_k{k_str}.xlsx"
+
+    try:
+        df_cl = pd.read_csv(csv_path, usecols=["cd_mun", "cluster"], dtype={"cd_mun": str})
+        df_cl["cd_mun"] = df_cl["cd_mun"].str.zfill(7)
+    except Exception as e:
+        print(f"  [WARNING] Could not read cluster CSV: {e}")
+        return {}
+
+    if not xlsx_path.exists():
+        print(f"  [INFO] Cluster Excel not found ({xlsx_path.name}) — profile labels omitted.")
+        return {}
+
+    try:
+        df_p = pd.read_excel(xlsx_path, sheet_name="perfis_cluster", usecols=["cluster", "perfis"])
+        df_p = df_p[df_p["perfis"].notna() & (df_p["perfis"].astype(str).str.strip() != "")]
+        if df_p.empty:
+            print("  [INFO] 'perfis' column in Excel is empty — profile labels omitted.")
+            return {}
+    except Exception as e:
+        print(f"  [WARNING] Could not read 'perfis_cluster' sheet: {e}")
+        return {}
+
+    perfil_map = {int(r["cluster"]): str(r["perfis"]).strip() for _, r in df_p.iterrows()}
+
+    result: dict[str, str] = {}
+    for _, row in df_cl.iterrows():
+        try:
+            cl = int(row["cluster"])
+        except (ValueError, TypeError):
+            continue
+        if cl in perfil_map:
+            result[str(row["cd_mun"])] = perfil_map[cl]
+
+    print(f"  {len(result):,} municipalities mapped to cluster profiles.")
+    return result
 
 
 def compute_porte_quintiles(
@@ -366,6 +409,7 @@ def _save_overview_figure(
     city_name: str,
     porte: str | None,
     out_path: Path,
+    cluster_label: str | None = None,
 ) -> None:
     """Landscape overview: IIC map (left) | radar + histogram stacked (right)."""
     class_colors = _iic_colors()
@@ -417,6 +461,22 @@ def _save_overview_figure(
     ax_hist.legend(fontsize=7.5, framealpha=0.85)
     ax_hist.spines[["top", "right"]].set_visible(False)
     ax_hist.set_title("Distribuição do IIC Final", fontsize=8.5, pad=4)
+
+    if cluster_label:
+        fig.text(
+            0.5, 0.99,
+            f"Perfil: {cluster_label}",
+            ha="center", va="top",
+            fontsize=8, color="#444",
+            bbox=dict(
+                boxstyle="round,pad=0.35",
+                facecolor="#fef9ed",
+                edgecolor=WRI_YELLOW,
+                linewidth=0.8,
+            ),
+            transform=fig.transFigure,
+            zorder=30,
+        )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     _save_webp(fig, out_path)
@@ -508,6 +568,7 @@ def generate_city(
     quintile_data: dict,
     coastal_muns: set[str] | None = None,
     equal_intervals: dict[str, list[float]] | None = None,
+    cluster_profiles: dict[str, str] | None = None,
 ) -> dict | None:
     nm_mun = city_row["nm_mun"]
     nm_uf  = city_row["nm_uf"]
@@ -526,8 +587,9 @@ def generate_city(
     gdf      = diag_utils.build_gdf(df)
     cd_mun   = df["cd_mun"].iloc[0] if "cd_mun" in df.columns else None
     boundary = get_boundary(cd_mun, municipalities)
-    cd_str   = str(int(float(cd_mun))).zfill(7) if cd_mun is not None else None
-    porte    = porte_map.get(cd_str) if cd_str else None
+    cd_str        = str(int(float(cd_mun))).zfill(7) if cd_mun is not None else None
+    porte         = porte_map.get(cd_str) if cd_str else None
+    cluster_label = cluster_profiles.get(cd_str) if cluster_profiles and cd_str else None
     print(f"  porte_munic: {porte}")
 
     iic_vals = df["iic_final"].dropna().values
@@ -549,6 +611,7 @@ def generate_city(
         city_dim_means, national_dim_means, dim_labels, nm_mun,
         porte,
         city_dir / "overview.png",
+        cluster_label=cluster_label,
     )
     print("  overview.png")
 
@@ -1299,6 +1362,9 @@ def main() -> None:
             equal_intervals[col] = bounds
             print(f"  {col}: {bounds[0]:.3f}–{bounds[-1]:.3f}")
 
+    print("\nLoading cluster profiles...")
+    cluster_profiles = load_cluster_profiles()
+
     print("\nGenerating national distribution figure...")
     nat_dist_path = IMGS_DIR / "national_distribution.webp"
     _save_national_distribution(df_full, nat["iic_final"]["mean"], nat_dist_path)
@@ -1308,7 +1374,7 @@ def main() -> None:
 
     cities_data = []
     for city_row in CITIES:
-        data = generate_city(city_row, df_full, nat, muns, porte_map, quintile_data, coastal_muns, equal_intervals)
+        data = generate_city(city_row, df_full, nat, muns, porte_map, quintile_data, coastal_muns, equal_intervals, cluster_profiles)
         if data:
             cities_data.append(data)
 

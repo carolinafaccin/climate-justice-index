@@ -7,23 +7,23 @@ Output: cfg.FILES_H3["e5"] parquet
 
 import pandas as pd
 import numpy as np
-import h3
 import sys
 from pathlib import Path
 from datetime import datetime
 
-PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
-sys.path.append(PROJECT_ROOT)
+_ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pipeline.py").exists())
+sys.path.insert(0, str(_ROOT))
 from src import config as cfg
 from src import utils
 
 # ==============================================================================
 # 1. PATHS AND SETTINGS
 # ==============================================================================
-QUEIMADAS_DIR = cfg.RAW_DIR / cfg.INDICATORS["e5"]["source"]["dir"]
-ANOS          = list(range(2016, 2026))   # 2016–2025
-K_RING        = 3                         # ~1 km buffer in H3 res9 (raio de impacto sanitário de PM2,5)
-MIN_YEARS     = 2                         # minimum years of recurrent exposure to score > 0
+_e5_src       = cfg.INDICATORS["e5"]["source"]
+QUEIMADAS_DIR = cfg.RAW_DIR / _e5_src["dir"]
+ANOS          = list(range(_e5_src["year_start"], _e5_src["year_end"] + 1))
+K_RING        = _e5_src["k_ring"]     # ~1 km buffer in H3 res9 (raio de impacto sanitário de PM2,5)
+MIN_YEARS     = _e5_src["min_years"]  # minimum years of recurrent exposure to score > 0
 
 H3_RES = cfg.H3_RES
 
@@ -33,14 +33,8 @@ DIAGNOSTIC_TXT = cfg.DIAGNOSE_DIR / f"diagnostic_h3_e5_queimadas_{now}.txt"
 col_e5_norm = cfg.COLUMN_MAP["e5"]
 col_e5_abs  = col_e5_norm.replace("_norm", "_abs")
 
-# Detect h3-py version once
-try:
-    h3.latlng_to_cell(0.0, 0.0, H3_RES)
-    def _to_cell(lat, lon): return h3.latlng_to_cell(lat, lon, H3_RES)
-    def _k_ring(cell, k):   return h3.grid_disk(cell, k)
-except AttributeError:
-    def _to_cell(lat, lon): return h3.geo_to_h3(lat, lon, H3_RES)
-    def _k_ring(cell, k):   return h3.k_ring(cell, k)
+def _to_cell(lat, lon): return utils.h3_latlng_to_cell(lat, lon, H3_RES)
+def _k_ring(cell, k):   return utils.h3_grid_disk(cell, k)
 
 
 # ==============================================================================

@@ -49,8 +49,8 @@ from pathlib import Path
 import geopandas as gpd
 
 # ── Paths via config ───────────────────────────────────────────────────────────
-_PROJECT_ROOT  = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(_PROJECT_ROOT))
+_ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pipeline.py").exists())
+sys.path.insert(0, str(_ROOT))
 from src import config as cfg  # noqa: E402
 
 DOWNLOAD_DIR   = cfg.RAW_DIR / "sgb/raw_zips"

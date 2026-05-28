@@ -5,7 +5,7 @@ from . import config as cfg
 from . import utils
 
 
-def _nanmean_cols(df: pd.DataFrame, cols: list) -> pd.Series:
+def _nanmean_cols(df: pd.DataFrame, cols: list[str]) -> pd.Series:
     """Row-wise mean across cols, one column at a time to avoid allocating a full (n_rows × n_cols) matrix."""
     total = np.zeros(len(df), dtype='float64')
     count = np.zeros(len(df), dtype='int32')

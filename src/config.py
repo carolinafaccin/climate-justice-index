@@ -33,12 +33,17 @@ RESULTS_COMPLETE_DIR  = RESULTS_DIR / "complete"
 RESULTS_DASHBOARD_DIR = RESULTS_DIR / "dashboard"
 RESULTS_GPKG_DIR      = RESULTS_DIR / "complete_gpkg"
 
-for d in [OUTPUTS_DIR, RESULTS_DIR, RESULTS_COMPLETE_DIR, RESULTS_DASHBOARD_DIR,
-          RESULTS_GPKG_DIR, FIGURES_DIR, DIAGNOSE_DIR]:
-    d.mkdir(parents=True, exist_ok=True)
-
 LOGS_DIR = BASE_DIR / "logs"
-LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def ensure_output_dirs() -> None:
+    """Create project output directories. Called at module load; also callable explicitly."""
+    for d in [OUTPUTS_DIR, RESULTS_DIR, RESULTS_COMPLETE_DIR, RESULTS_DASHBOARD_DIR,
+              RESULTS_GPKG_DIR, FIGURES_DIR, DIAGNOSE_DIR, LOGS_DIR]:
+        d.mkdir(parents=True, exist_ok=True)
+
+
+ensure_output_dirs()
 
 # ==============================================================================
 # 2. GLOBAL PROJECT DEFINITIONS
@@ -46,6 +51,10 @@ LOGS_DIR.mkdir(parents=True, exist_ok=True)
 # Grid Resolution
 H3_RES = 9
 COL_ID_H3 = 'h3_id'
+
+# Brazilian standard CRS (used across ETL scripts)
+CRS_LATLON = "EPSG:4674"   # SIRGAS 2000 — geographic (degrees)
+CRS_METRIC = "EPSG:5880"   # Brazil Polyconic — metric projection for area/distance calculations
 
 # Versioning
 INDEX_VERSION = "v2.0"
@@ -71,9 +80,57 @@ else:
     _raw = {"file_prefix": "br_h3", "dimensions": {}}
 
 # ==============================================================================
-# 4. AUTOMATIC DICTIONARY GENERATION
+# 4. SCHEMA VALIDATION + AUTOMATIC DICTIONARY GENERATION
 # ==============================================================================
-FILE_PREFIX = _raw.get("file_prefix", "br_h3")
+def _validate_indicators(raw: dict) -> None:
+    """Raise ValueError immediately if any indicator is missing a required field."""
+    for dim, dim_data in raw.get("dimensions", {}).items():
+        for key, meta in dim_data.get("indicators", {}).items():
+            for field in ("name", "abbr", "display_name", "source"):
+                if field not in meta:
+                    raise ValueError(
+                        f"indicators.json: [{dim}][{key}] is missing required field '{field}'"
+                    )
+
+_validate_indicators(_raw)
+
+FILE_PREFIX        = _raw.get("file_prefix", "br_h3")
+SALARIO_MINIMO_REF = _raw.get("salario_minimo_ref", 1212)
+
+# Geographic reference data (region/porte ordering for analysis scripts)
+_GEO_PATH = BASE_DIR / "config" / "geo_config.json"
+if _GEO_PATH.exists():
+    with open(_GEO_PATH, 'r', encoding='utf-8') as _gf:
+        _geo = json.load(_gf)
+    REGIOES_ORDER = _geo.get("regioes_order", ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"])
+    PORTES_ORDER  = _geo.get("portes_order",  [
+        "Até 5.000 hab.", "De 5.001 a 10.000 hab.", "De 10.001 a 20.000 hab.",
+        "De 20.001 a 50.000 hab.", "De 50.001 a 100.000 hab.",
+        "De 100.001 a 500.000 hab.", "Mais de 500.000 hab.",
+    ])
+else:
+    REGIOES_ORDER = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"]
+    PORTES_ORDER  = [
+        "Até 5.000 hab.", "De 5.001 a 10.000 hab.", "De 10.001 a 20.000 hab.",
+        "De 20.001 a 50.000 hab.", "De 50.001 a 100.000 hab.",
+        "De 100.001 a 500.000 hab.", "Mais de 500.000 hab.",
+    ]
+
+# SGB pipeline parameters (shared across sgb/ scripts)
+_SGB_CFG_PATH = BASE_DIR / "config" / "sgb_config.json"
+if _SGB_CFG_PATH.exists():
+    with open(_SGB_CFG_PATH, 'r', encoding='utf-8') as _sf:
+        SGB_CFG = json.load(_sf)
+else:
+    SGB_CFG = {
+        "simplify_geom_m":         5.0,
+        "simplify_h3_intersect_m": 20.0,
+        "risk_class_min":          4,
+        "sgb_ref_threshold":       0.3,
+        "sgb_coverage_min":        0.5,
+        "sweep_step_coarse":       0.05,
+        "sweep_step_fine":         0.01,
+    }
 
 # Flatten nested structure: {key: {dimension, name, abbr, ...}}
 INDICATORS = {}

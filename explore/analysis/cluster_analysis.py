@@ -9,15 +9,15 @@ Strategy:
   5. Merge IBGE tipologias (regiao, porte, rural/urban typology)
   6. Filter to top tercile of iic_final; select candidates with regional diversity
   7. Export (filenames include _k{N_CLUSTERS} so different runs never overwrite):
-       {DIAGNOSE_DIR}/analysis/clusters_municipios_k{N_CLUSTERS}.csv
-       {DIAGNOSE_DIR}/analysis/candidatos_estudo_de_caso_k{N_CLUSTERS}.xlsx
-       {DIAGNOSE_DIR}/analysis/cluster_heatmap_k{N_CLUSTERS}.png
-       {DIAGNOSE_DIR}/analysis/cluster_pca_k{N_CLUSTERS}.png
-       {DIAGNOSE_DIR}/analysis/cluster_boxplots_k{N_CLUSTERS}.png
-       {DIAGNOSE_DIR}/analysis/cluster_mapa_k{N_CLUSTERS}.png
+       {OUTPUTS_DIR}/analysis/clusters_municipios_k{N_CLUSTERS}.csv
+       {OUTPUTS_DIR}/analysis/candidatos_estudo_de_caso_k{N_CLUSTERS}.xlsx  ← sheet 'perfis_cluster' has 'perfis' column for manual profile names
+       {OUTPUTS_DIR}/analysis/cluster_heatmap_k{N_CLUSTERS}.png
+       {OUTPUTS_DIR}/analysis/cluster_pca_k{N_CLUSTERS}.png
+       {OUTPUTS_DIR}/analysis/cluster_boxplots_k{N_CLUSTERS}.png
+       {OUTPUTS_DIR}/analysis/cluster_mapa_k{N_CLUSTERS}.png
 
 Usage:
-    python diagnose/analysis/cluster_municipios.py          # default k=4
+    python explore/analysis/cluster_analysis.py          # default k=4
     # edit N_CLUSTERS below and re-run for a different k
 
 Dependencies: pandas, scikit-learn, matplotlib, seaborn, openpyxl (all in project venv)
@@ -48,31 +48,12 @@ RANDOM_SEED  = 42
 N_CANDIDATES = 50      # max candidates per cluster in the Excel output
 IIC_TERCILE  = 0.5     # pool: municipalities above this IIC quantile (0.5 = top half)
 
-REGIOES_ORDER = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"]
-PORTES_ORDER  = [
-    "Pequeno Porte I",
-    "Pequeno Porte II",
-    "Médio Porte",
-    "Grande Porte",
-    "Metrópole",
-]
+REGIOES_ORDER = cfg.REGIOES_ORDER
+PORTES_ORDER  = cfg.PORTES_ORDER
 
-# ─── Paths ────────────────────────────────────────────────────────────────────
-_results = sorted(
-    cfg.FILES["output"]["results_dir"].glob(f"{cfg.IIC_FILE_PREFIX}_*.parquet"),
-    key=lambda p: p.stat().st_mtime,
-    reverse=True,
-)
-if not _results:
-    raise FileNotFoundError(
-        f"No results found in {cfg.FILES['output']['results_dir']}\n"
-        "Run `python run_index.py` first."
-    )
-RESULTS_FILE    = _results[0]
 TIPOLOGIAS_FILE = cfg.RAW_DIR / "ibge" / "tipologias" / "tipologias_municipios_brasil.csv"
 
-OUT_DIR = cfg.DIAGNOSE_DIR / "analysis"
-OUT_DIR.mkdir(parents=True, exist_ok=True)
+OUT_DIR      = cfg.OUTPUTS_DIR / "analysis"
 OUT_CSV      = OUT_DIR / f"clusters_municipios_k{N_CLUSTERS}.csv"
 OUT_EXCEL    = OUT_DIR / f"candidatos_estudo_de_caso_k{N_CLUSTERS}.xlsx"
 OUT_HEATMAP  = OUT_DIR / f"cluster_heatmap_k{N_CLUSTERS}.png"
@@ -86,11 +67,28 @@ UF_GPKG         = MALHA_DIR / "uf.gpkg"
 PAIS_GPKG       = MALHA_DIR / "pais.gpkg"
 
 
+def _find_results_file() -> Path:
+    """Locate the most recent IIC results parquet. Raises FileNotFoundError if none exists."""
+    _results = sorted(
+        cfg.FILES["output"]["results_dir"].glob(f"{cfg.IIC_FILE_PREFIX}_*.parquet"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not _results:
+        raise FileNotFoundError(
+            f"No results found in {cfg.FILES['output']['results_dir']}\n"
+            "Run `python pipeline.py` first."
+        )
+    if len(_results) > 1:
+        print(f"   NOTE: {len(_results)} result files found — using most recent: {_results[0].name}")
+    return _results[0]
+
+
 # ─── Step 1: Load & aggregate to municipality level ───────────────────────────
-def load_and_aggregate() -> pd.DataFrame:
-    print(f"\nLoading {RESULTS_FILE.name} ...")
+def load_and_aggregate(results_file: Path) -> pd.DataFrame:
+    print(f"\nLoading {results_file.name} ...")
     needed = ["cd_mun", "nm_mun", "nm_uf", "qtd_dom", "iic_final"] + DIMS_COLS
-    df = pd.read_parquet(RESULTS_FILE, columns=needed)
+    df = pd.read_parquet(results_file, columns=needed)
     df = df.dropna(subset=["nm_mun"])
     print(f"  {len(df):,} hexagons loaded.")
 
@@ -263,7 +261,7 @@ def select_candidates(df: pd.DataFrame) -> pd.DataFrame:
             for porte in PORTES_ORDER:
                 cell = sub[
                     (sub["regiao"] == reg) &
-                    (sub["porte_cnas_mds"] == porte)
+                    (sub["porte_munic"] == porte)
                 ]
                 if cell.empty:
                     continue
@@ -317,6 +315,7 @@ def _build_profile_table(df_all: pd.DataFrame) -> pd.DataFrame:
         stds  = sub[["iic_final"] + DIMS_COLS].std()
         zs    = {d: (means[d] - overall_means[d]) / max(overall_stds[d], 1e-9) for d in DIMS_COLS}
         row   = {
+            "perfis":       "",   # fill manually — used as profile label in generate_report
             "cluster":      cl,
             "n_municipios": len(sub),
             "iic_final_mean": round(means["iic_final"], 4),
@@ -547,13 +546,16 @@ def save_plots(df_all: pd.DataFrame) -> None:
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 def main() -> None:
+    results_file = _find_results_file()
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+
     print("=" * 65)
     print("Cluster Analysis — Case Study Municipality Selection")
-    print(f"Results file : {RESULTS_FILE.name}")
+    print(f"Results file : {results_file.name}")
     print(f"Tipologias   : {TIPOLOGIAS_FILE.name}")
     print("=" * 65)
 
-    agg        = load_and_aggregate()
+    agg        = load_and_aggregate(results_file)
     df_km      = run_kmeans(agg)
     df_merged  = merge_tipologias(df_km)
     candidates = select_candidates(df_merged)
@@ -564,7 +566,7 @@ def main() -> None:
         print(f"  Cluster {cl}: {len(sub)} candidates")
         for _, row in sub.iterrows():
             reg   = row.get("regiao", "?")
-            porte = row.get("porte_cnas_mds", "?")
+            porte = row.get("porte_munic", "?")
             print(
                 f"    [{row['candidate_rank']}] {row['nm_mun']} / {row['nm_uf']} "
                 f"| {reg} | {porte} | IIC={row['iic_final']:.3f}"

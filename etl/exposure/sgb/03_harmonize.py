@@ -43,8 +43,8 @@ import geopandas as gpd
 from shapely.geometry import MultiPolygon, Polygon
 
 # ── Paths via config ───────────────────────────────────────────────────────────
-_PROJECT_ROOT  = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(_PROJECT_ROOT))
+_ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pipeline.py").exists())
+sys.path.insert(0, str(_ROOT))
 from src import config as cfg  # noqa: E402
 
 POR_MUN_DIR   = cfg.RAW_DIR / "sgb/por_municipio"
@@ -55,9 +55,9 @@ FAILURES_PATH = cfg.RAW_DIR / "sgb/03_failures.csv"
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _pipeline_log import log_failure, reset_failures  # noqa: E402
 
-TARGET_CRS  = "EPSG:4674"   # SIRGAS 2000 geográfico
-CRS_PROJ    = "EPSG:5880"   # SIRGAS 2000 / Brazil Polyconic — para simplificação em metros
-SIMPLIFY_M  = 5.0           # tolerância de simplificação em metros
+TARGET_CRS  = cfg.CRS_LATLON   # SIRGAS 2000 geográfico
+CRS_PROJ    = cfg.CRS_METRIC   # SIRGAS 2000 / Brazil Polyconic — para simplificação em metros
+SIMPLIFY_M  = cfg.SGB_CFG["simplify_geom_m"]
 
 TIPO_TO_FILE = {
     "inundacao": "03_sgb_floods_br.gpkg",

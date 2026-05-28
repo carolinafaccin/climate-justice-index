@@ -24,10 +24,19 @@ def main():
     }
 
     # 2. Carregar Metadados Base (Mapeamento H3 -> Município)
-    metadata_path = cfg.DATA_DIR / "br_h3_base_metadata.parquet"
+    metadata_path = cfg.FILES_H3["base_metadata"]
     if not metadata_path.exists():
-        # Tenta procurar na pasta results caso não esteja na raiz de data
-        metadata_path = cfg.RESULTS_COMPLETE_DIR / "br_h3_iic_v2_0_20260427_144058.parquet"
+        result_files = sorted(
+            cfg.RESULTS_COMPLETE_DIR.glob("br_h3_iic_*.parquet"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if not result_files:
+            raise FileNotFoundError(
+                f"Base metadata not found at {metadata_path} — run etl/geo/h3_dasymetric_interpolation.py first"
+            )
+        metadata_path = result_files[0]
+        print(f"   (fallback: using {metadata_path.name})")
 
     print(f"Lendo metadados de: {metadata_path.name}")
     df_base = pd.read_parquet(metadata_path, columns=['h3_id', 'cd_mun'])

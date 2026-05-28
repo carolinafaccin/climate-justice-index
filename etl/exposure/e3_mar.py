@@ -13,8 +13,8 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
-PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
-sys.path.append(PROJECT_ROOT)
+_ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pipeline.py").exists())
+sys.path.insert(0, str(_ROOT))
 from src import config as cfg
 from src import utils
 
@@ -48,21 +48,17 @@ def main():
 
     parts = []
     for path in csv_files:
-        try:
-            df = pd.read_csv(path, usecols=["h3_id", "qtd_dom", "risco_slr"])
-        except ValueError:
-            df = pd.read_csv(path)
-            df.columns = df.columns.str.lower()
-            df = df[["h3_id", "qtd_dom", "risco_slr"]]
+        df = utils.read_csv_columns(path, ["h3_id", "qtd_dom", "risco_slr"])
         parts.append(df)
         print(f"   ✓ {path.name}  ({len(df):,} hexagons)")
 
     df_all = pd.concat(parts, ignore_index=True)
     print(f"\n   Total: {len(df_all):,} coastal hexagons loaded")
 
+    # Border hexagons may appear in multiple UF-level GEE exports — deduplicate.
     dupes = df_all["h3_id"].duplicated().sum()
     if dupes > 0:
-        print(f"   WARNING: {dupes:,} duplicate h3_ids — keeping first value.")
+        print(f"   NOTE: {dupes:,} border hexagons in multiple UF exports ({100*dupes/len(df_all):.1f}%) — keeping first")
         df_all = df_all.drop_duplicates(subset="h3_id", keep="first")
 
     # ==============================================================================

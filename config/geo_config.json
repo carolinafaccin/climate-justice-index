@@ -1,0 +1,12 @@
+{
+  "regioes_order": ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"],
+  "portes_order": [
+    "Até 5.000 hab.",
+    "De 5.001 a 10.000 hab.",
+    "De 10.001 a 20.000 hab.",
+    "De 20.001 a 50.000 hab.",
+    "De 50.001 a 100.000 hab.",
+    "De 100.001 a 500.000 hab.",
+    "Mais de 500.000 hab."
+  ]
+}

@@ -1,5 +1,6 @@
 {
   "file_prefix": "br_h3",
+  "salario_minimo_ref": 1212,
   "dimensions": {
     "grupos_prioritarios": {
       "abbr": "IP",
@@ -112,7 +113,20 @@
           "display_name": "Acesso à saúde",
           "description": "Inacessibilidade gravitacional a estabelecimentos de saúde: inverso da soma da capacidade de serviços do CNES ponderada pela distância euclidiana dos 3 estabelecimentos mais próximos",
           "source": {
-            "file": "cnes/2026-01/t1/cnes_estabelecimentos.csv"
+            "file": "cnes/2026-01/t1/cnes_estabelecimentos.csv",
+            "k_nearest": 3,
+            "distance_buffer_m": 100,
+            "use_rank_percentile": false,
+            "winsorize_pct": 3,
+            "min_capacity": 1,
+            "service_cols": [
+              "st_centro_cirurgico",
+              "st_centro_obstetrico",
+              "st_centro_neonatal",
+              "st_atend_hospitalar",
+              "st_servico_apoio",
+              "st_atend_ambulatorial"
+            ]
           }
         },
         "v5": {
@@ -153,7 +167,10 @@
           "display_name": "Inundações",
           "description": "Suscetibilidade a inundações em hexágonos habitados, combinando o modelo de terreno HAND (~30 m) com o perigo JRC modelado para período de retorno de 100 anos (cobertura nacional), com integração de dados de cartografia de suscetibilidade do SGB/CPRM",
           "source": {
-            "dir": "gee/suscetibilidade-inundacoes-hand-jrc-v1"
+            "dir": "gee/suscetibilidade-inundacoes-hand-jrc-v1",
+            "sgb_alta_frac_min": 0.3,
+            "sgb_coverage_min": 0.5,
+            "sgb_override_score": 1.0
           }
         },
         "e3": {
@@ -180,7 +197,11 @@
           "display_name": "Focos de queimadas",
           "description": "Fração de anos (2016–2025) com focos de queimadas na vizinhança (~1 km) do hexágono, considerando apenas exposição recorrente (≥ 2 anos dos 10), restrita a hexágonos habitados",
           "source": {
-            "dir": "inpe/queimadas"
+            "dir": "inpe/queimadas",
+            "year_start": 2016,
+            "year_end": 2025,
+            "k_ring": 3,
+            "min_years": 2
           }
         }
       }
@@ -197,7 +218,11 @@
           "display_name": "Investimento",
           "description": "Despesas municipais per capita, entre 2015 e 2024, em gestão ambiental",
           "source": {
-            "dir": "siconfi/t0"
+            "dir": "siconfi/t0",
+            "year_start": 2015,
+            "year_end": 2024,
+            "filter_column": "Despesas Liquidadas",
+            "filter_account": "18 - Gestão Ambiental"
           }
         },
         "g2": {

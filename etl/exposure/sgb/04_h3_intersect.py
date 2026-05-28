@@ -47,8 +47,8 @@ import shapely
 from shapely.geometry import Polygon
 
 # ── Paths via config ───────────────────────────────────────────────────────────
-_PROJECT_ROOT  = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(_PROJECT_ROOT))
+_ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pipeline.py").exists())
+sys.path.insert(0, str(_ROOT))
 from src import config as cfg  # noqa: E402
 
 HARMONIZED_DIR = cfg.RAW_DIR / "sgb/harmonized"
@@ -65,9 +65,12 @@ OUTPUT_FILES = {
 }
 PARTIAL_DIR = HARMONIZED_DIR / "04_partial"
 
-CRS_GEO  = "EPSG:4674"   # SIRGAS 2000 geográfico — sistema nativo do H3
-CRS_PROJ = "EPSG:5880"   # SIRGAS 2000 / Brazil Polyconic — para cálculo de área em m²
-H3_RES   = 9
+CRS_GEO  = cfg.CRS_LATLON   # SIRGAS 2000 geográfico — sistema nativo do H3
+CRS_PROJ = cfg.CRS_METRIC   # SIRGAS 2000 / Brazil Polyconic — para cálculo de área em m²
+H3_RES   = cfg.H3_RES
+
+SIMPLIFY_H3_M  = cfg.SGB_CFG["simplify_h3_intersect_m"]  # tolerância de simplificação antes da interseção H3
+RISK_CLASS_MIN = cfg.SGB_CFG["risk_class_min"]             # classe mínima para "alta/muito alta" suscetibilidade
 
 # Área média de um hexágono H3 res9 em m²  (todos os hexágonos têm ~a mesma área)
 H3_CELL_AREA_M2: float = h3.average_hexagon_area(H3_RES, unit="m^2")
@@ -151,7 +154,7 @@ def intersect_state(
     sgb_proj = valid[["classe_num", "geometry"]].to_crs(CRS_PROJ).reset_index(drop=True)
     # Simplifica vértices antes da interseção: 20 m ≈ 11 % da aresta H3 res9 (174 m),
     # dentro da precisão nominal do mapeamento 1:25.000. Ver ADR-0033.
-    sgb_proj.geometry = sgb_proj.geometry.simplify(20.0, preserve_topology=True)
+    sgb_proj.geometry = sgb_proj.geometry.simplify(SIMPLIFY_H3_M, preserve_topology=True)
     sgb_proj.geometry = sgb_proj.geometry.make_valid()  # simplify pode criar topologia inválida
     sgb_geo  = valid[["classe_num", "geometry"]].to_crs(CRS_GEO).reset_index(drop=True)
 
@@ -210,7 +213,7 @@ def intersect_state(
     grp       = inter.groupby("h3_id")
     total     = grp["area_m2"].sum().rename("sgb_area_m2")
     alta      = (
-        inter[inter["classe_num"] >= 4]
+        inter[inter["classe_num"] >= RISK_CLASS_MIN]
         .groupby("h3_id")["area_m2"]
         .sum()
         .rename("alta_area_m2")

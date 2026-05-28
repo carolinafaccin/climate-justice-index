@@ -52,8 +52,8 @@ import pandas as pd
 from shapely.geometry import MultiPolygon
 
 # ── Paths via config ───────────────────────────────────────────────────────────
-_PROJECT_ROOT  = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(_PROJECT_ROOT))
+_ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pipeline.py").exists())
+sys.path.insert(0, str(_ROOT))
 from src import config as cfg  # noqa: E402
 
 DOWNLOAD_DIR    = cfg.RAW_DIR / "sgb/raw_zips"
@@ -68,7 +68,7 @@ FAILURES_PATH   = cfg.RAW_DIR / "sgb/02_failures.csv"
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _pipeline_log import log_failure, reset_failures  # noqa: E402
 
-TARGET_CRS = "EPSG:4674"  # SIRGAS 2000 geográfico
+TARGET_CRS = cfg.CRS_LATLON  # SIRGAS 2000 geográfico
 
 ENCODINGS_TO_TRY = ["utf-8", "latin-1", "cp1252"]
 

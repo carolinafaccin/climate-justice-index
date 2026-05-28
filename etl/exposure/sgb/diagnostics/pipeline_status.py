@@ -6,7 +6,7 @@ Lê todos os artefatos gerados pelos scripts 00–04 e produz uma tabela
 única com o status de cada município em cada etapa do pipeline, separado
 por tipo (massa vs inundação).
 
-Inputs (todos inferidos a partir de config.local.json):
+Inputs (todos inferidos a partir de config/config.local.json via cfg):
   00_sgb_manifest.csv      — universo de URLs coletadas + status de download
   01_sgb_cobertura.csv     — status do ZIP por município (zip_erro, sem_cobertura, ok)
   02_progress.json         — ZIPs extraídos com sucesso por tipo
@@ -29,7 +29,6 @@ USO:
   python 08_sgb_pipeline_status.py --summary     # só imprime sumário, sem CSV
 """
 
-import json
 import re
 import sys
 import argparse
@@ -39,15 +38,12 @@ from datetime import datetime
 import pandas as pd
 
 # ── Paths via config ───────────────────────────────────────────────────────────
-def _load_data_dir() -> Path:
-    project_root = Path(__file__).resolve().parents[3]
-    config_path  = project_root / "config" / "config.local.json"
-    with open(config_path, encoding="utf-8") as f:
-        return Path(json.load(f)["data_dir"])
+_ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pipeline.py").exists())
+sys.path.insert(0, str(_ROOT))
+from src import config as cfg  # noqa: E402
 
-_DATA_DIR      = _load_data_dir()
-SGB_DIR        = _DATA_DIR / "inputs/raw/sgb"
-OUTPUT_PATH    = SGB_DIR / "sgb_pipeline_status.csv"
+SGB_DIR     = cfg.RAW_DIR / "sgb"
+OUTPUT_PATH = SGB_DIR / "sgb_pipeline_status.csv"
 
 MANIFEST_PATH  = SGB_DIR / "00_sgb_manifest.csv"
 COBERTURA_PATH = SGB_DIR / "01_sgb_cobertura.csv"
