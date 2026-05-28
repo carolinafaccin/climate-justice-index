@@ -36,18 +36,18 @@ python pipeline.py --from cluster
 python pipeline.py --only scatter
 ```
 
-Etapas disponíveis: `calc` → `cluster` → `multicol` → `norm` → `export` → `scatter` → `report`
+Etapas disponíveis: `test` → `calc` → `report`
 
 ______________________________________________________________________
 
 ## Estrutura de pastas
 
-```
-pipeline.py                   # Orquestrador completo (substitui o .bat)
+```bash
+pipeline.py                   # Orquestrador completo
 run_index.py                  # Executa só o cálculo do índice
 
 config/
-├── indicators.json           # Fonte única de verdade para metadados dos indicadores
+├── indicators.json           # Metadados dos indicadores
 ├── config.example.json       # Modelo de configuração local
 └── config.local.json         # Configuração local (gitignored)
 
@@ -61,6 +61,7 @@ etl/
 ├── census/                   # IP + IV — dados censitários (IBGE 2022)
 ├── vulnerability/            # IV — fontes adicionais (ex: CNES)
 ├── exposure/                 # IE — exposição climática (MapBiomas, INPE, Landsat)
+│   └── sgb/                  # E2 — extração e harmonização de dados do SGB (inundações)
 ├── governance/               # IG — gestão municipal (SICONFI, MUNIC, MIDR)
 ├── geo/                      # Pré-processamento espacial (interpolação dasimétrica)
 └── gee_scripts/              # Scripts JavaScript para Google Earth Engine
@@ -79,13 +80,20 @@ logs/                         # Logs de execução (gitignored)
 
 A pasta `decisions/` contém o log estruturado das decisões metodológicas e conceituais do índice em formato MADR light. Veja [decisions/0001-registro-de-decisoes.md](decisions/0001-registro-de-decisoes.md) para o sistema completo e convenções de uso.
 
-### Saídas em `data_dir/outputs/results/`
+### Estrutura de `data_dir/`
 
-```
-results/
-├── complete/                 # Parquets completos do cálculo do índice
-├── dashboard/                # Parquets slim para o dashboard
-└── complete_gpkg/            # Arquivos GeoPackage
+```bash
+data_dir/
+├── inputs/
+│   ├── raw/                  # Dados brutos originais (não modificados)
+│   └── clean/                # Dados processados prontos para o cálculo
+└── outputs/
+    ├── results/
+    │   ├── complete/         # Parquets completos do cálculo do índice
+    │   ├── dashboard/        # Parquets slim para o dashboard
+    │   └── complete_gpkg/    # Arquivos GeoPackage
+    ├── figures/              # Visualizações geradas pelos scripts de explore/
+    └── diagnose/             # Saídas de validação e diagnóstico de qualidade
 ```
 
 ______________________________________________________________________
