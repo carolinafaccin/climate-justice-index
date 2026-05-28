@@ -141,6 +141,7 @@ for dim, dim_data in _raw.get("dimensions", {}).items():
         "abbr":         dim_data.get("abbr", dim),
         "name":         dim_data.get("name", dim),
         "display_name": dim_data.get("display_name", dim_data.get("abbr", dim)),
+        "color":        dim_data.get("color", "#999999"),
         "invert":       dim_data.get("invert", False),
     }
     ind_map = dim_data.get("indicators", {})

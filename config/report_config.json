@@ -4,12 +4,6 @@
   "ind_fig_size": [12, 5.5],
   "wri_yellow": "#F0AB00",
   "wri_green": "#32864B",
-  "dim_colors": {
-    "ip": "#eb8026",
-    "iv": "#3855a3",
-    "ie": "#32864b",
-    "ig": "#9b216c"
-  },
   "classification_method_overview": "quintiles",
   "classification_method_indicators": "equal_intervals",
   "webp_quality": 82

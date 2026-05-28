@@ -6,6 +6,7 @@
       "abbr": "IP",
       "name": "Índice de Grupos Prioritários",
       "display_name": "Grupos Prioritários",
+      "color": "#eb8026",
       "invert": false,
       "indicators": {
         "p1": {
@@ -69,6 +70,7 @@
       "abbr": "IV",
       "name": "Índice de Vulnerabilidade",
       "display_name": "Vulnerabilidade Social",
+      "color": "#3855a3",
       "invert": false,
       "indicators": {
         "v1": {
@@ -150,6 +152,7 @@
       "abbr": "IE",
       "name": "Índice de Exposição",
       "display_name": "Exposição a Riscos Climáticos",
+      "color": "#32864b",
       "invert": false,
       "indicators": {
         "e1": {
@@ -210,6 +213,7 @@
       "abbr": "IG",
       "name": "Índice de Gestão Municipal",
       "display_name": "Capacidade de Gestão Municipal",
+      "color": "#9b216c",
       "invert": true,
       "indicators": {
         "g1": {

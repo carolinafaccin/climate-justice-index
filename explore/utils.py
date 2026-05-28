@@ -32,20 +32,13 @@ ALL_INDICATOR_KEYS: list[str] = [k for dim in cfg.DIMENSIONS for k in cfg.DIMENS
 # ---------------------------------------------------------------------------
 _ABBR_TO_DIM = {meta["abbr"].lower(): dim for dim, meta in cfg.DIMENSION_META.items()}
 
-_DIM_COLORS: dict[str, str] = {
-    "ip": "#C0392B",
-    "iv": "#E67E22",
-    "ie": "#27AE60",
-    "ig": "#2980B9",
-}
-
 DIMS: dict = {
     abbr: {
         "label": (
             f"{cfg.DIMENSION_META[dim]['abbr']} - {cfg.DIMENSION_META[dim]['display_name']}"
             + (" (inverted in IIC)" if cfg.DIMENSION_META[dim]["invert"] else "")
         ),
-        "color": _DIM_COLORS[abbr],
+        "color": cfg.DIMENSION_META[dim]["color"],
         "indicators": cfg.DIMENSIONS[dim],
         "ind_labels": {
             k: f"{k} - {cfg.INDICATORS[k]['display_name']}"

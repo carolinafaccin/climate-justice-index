@@ -44,7 +44,8 @@ DIM_LABELS  = {
         [(dim, cfg.DIMENSION_META[dim]) for dim in cfg.DIMENSION_META]
     )
 }
-DIM_COLORS  = {"ip": "#C0392B", "iv": "#E67E22", "ie": "#27AE60", "ig": "#2980B9"}
+_ABBR_TO_DIM = {meta["abbr"].lower(): dim for dim, meta in cfg.DIMENSION_META.items()}
+DIM_COLORS   = {abbr: cfg.DIMENSION_META[_ABBR_TO_DIM[abbr]]["color"] for abbr in DIM_ABBRS}
 MAX_SAMPLE  = 300_000
 
 # ==============================================================================

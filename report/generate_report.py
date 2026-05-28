@@ -68,7 +68,6 @@ OVERVIEW_FIG_SIZE = tuple(_rcfg["overview_fig_size"])
 IND_FIG_SIZE      = tuple(_rcfg["ind_fig_size"])
 WRI_YELLOW        = _rcfg["wri_yellow"]
 WRI_GREEN         = _rcfg["wri_green"]
-DIM_COLORS        = _rcfg["dim_colors"]
 CLASSIFICATION_METHOD_OVERVIEW   = _rcfg["classification_method_overview"]
 CLASSIFICATION_METHOD_INDICATORS = _rcfg["classification_method_indicators"]
 WEBP_QUALITY      = _rcfg["webp_quality"]
@@ -76,6 +75,13 @@ WEBP_QUALITY      = _rcfg["webp_quality"]
 DIM_ORDER    = ["ip", "iv", "ie", "ig"]
 ALL_IND_KEYS = diag_utils.ALL_INDICATOR_KEYS
 ABBR_TO_DIM  = {meta["abbr"].lower(): dim for dim, meta in cfg.DIMENSION_META.items()}
+
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    """Convert #rrggbb to rgba(r,g,b,alpha) for Plotly color strings."""
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha})"
+
 
 def _save_webp(fig, path: Path, dpi: int = DPI) -> None:
     """Save a matplotlib figure as WebP via Pillow (significantly smaller than PNG)."""
@@ -602,7 +608,7 @@ def generate_city(
     for abbr in DIM_ORDER:
         dim_key  = ABBR_TO_DIM[abbr]
         dim_meta = cfg.DIMENSION_META[dim_key]
-        color    = DIM_COLORS[abbr]
+        color    = dim_meta["color"]
         dim_dir  = city_dir / abbr
 
         dim_city_mean = float(df[abbr].mean()) if abbr in df.columns else None
@@ -723,13 +729,15 @@ def _build_sankey_json() -> str:
         "Investimento", "Planejamento", "Participação", "Governança",
         "Resposta", "Informação", "Reconhecimento", "Reparação",
     ]
+    _dim_order = ["grupos_prioritarios", "vulnerabilidade", "exposicao", "gestao_municipal"]
+    _dim_cols  = [cfg.DIMENSION_META[d]["color"] for d in _dim_order]
     node_colors = (
-        ["#2c2c2c"]               # IIC
-        + ["#eb8026", "#3855a3", "#32864b", "#9b216c"]   # dims
-        + ["#f5c896"] * 5         # IP indicators
-        + ["#adb8dc"] * 5         # IV indicators
-        + ["#a2cbb0"] * 5         # IE indicators
-        + ["#d4a3be"] * 8         # IG indicators
+        ["#2c2c2c"]      # IIC
+        + _dim_cols      # dims (from indicators.json)
+        + ["#f5c896"] * 5   # IP indicators (light tint)
+        + ["#adb8dc"] * 5   # IV indicators (light tint)
+        + ["#a2cbb0"] * 5   # IE indicators (light tint)
+        + ["#d4a3be"] * 8   # IG indicators (light tint)
     )
 
     # Flow: indicators → dimensions → IIC
@@ -742,12 +750,11 @@ def _build_sankey_json() -> str:
     val = ([25]*4
            + [ip_w]*5 + [iv_w]*5 + [ie_w]*5 + [ig_w]*8)
     lnk_colors = (
-        ["rgba(235,128,38,0.4)", "rgba(56,85,163,0.4)",
-         "rgba(50,134,75,0.4)", "rgba(155,33,108,0.4)"]
-        + ["rgba(235,128,38,0.22)"] * 5
-        + ["rgba(56,85,163,0.22)"]  * 5
-        + ["rgba(50,134,75,0.22)"]  * 5
-        + ["rgba(155,33,108,0.22)"] * 8
+        [_hex_to_rgba(c, 0.4)  for c in _dim_cols]
+        + [_hex_to_rgba(_dim_cols[0], 0.22)] * 5
+        + [_hex_to_rgba(_dim_cols[1], 0.22)] * 5
+        + [_hex_to_rgba(_dim_cols[2], 0.22)] * 5
+        + [_hex_to_rgba(_dim_cols[3], 0.22)] * 8
     )
 
     fig = {
@@ -796,12 +803,17 @@ def render_html(cities_data: list, sankey_json: str, nat_dist_img: str, notes_ht
     from jinja2 import Environment, FileSystemLoader
     env  = Environment(loader=FileSystemLoader(str(TMPL_DIR)), autoescape=True)
     tmpl = env.get_template("report.html")
+    dim_colors = {
+        meta["abbr"].lower(): meta["color"]
+        for meta in cfg.DIMENSION_META.values()
+    }
     return tmpl.render(
         cities=cities_data,
         generated_at=date.today().strftime("%d/%m/%Y"),
         sankey_json=sankey_json,
         nat_dist_img=nat_dist_img,
         notes_html=notes_html,
+        dim_colors=dim_colors,
     )
 
 
