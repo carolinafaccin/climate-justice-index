@@ -12,11 +12,6 @@ Usage:
 Stages (in order):
     test        Unit tests                       (pytest tests/)
     calc        Calculate the index              (run_index.py)
-    cluster     Cluster analysis                 (explore/analysis/cluster_municipios.py)
-    multicol    Multicollinearity check          (explore/checks/check_multicollinearity.py)
-    norm        Normalization check              (explore/checks/check_normalization.py)
-    export      Export parquet → GeoPackage      (explore/export/parquet_to_gpkg.py)
-    scatter     Scatter plots                    (explore/plots/plot_scatter.py)
     report      Generate HTML report             (report/generate_report.py)
 """
 
@@ -31,14 +26,9 @@ PYTHON = str(VENV_PYTHON) if VENV_PYTHON.exists() else sys.executable
 # Each stage is (name, command).
 # command is either a script path (str) or a list of args passed directly to subprocess.
 STAGES = [
-    ("test",     [PYTHON, "-m", "pytest", "tests/", "-v"]),
-    ("calc",     "run_index.py"),
-    ("cluster",  "explore/analysis/cluster_municipios.py"),
-    ("multicol", "explore/checks/check_multicollinearity.py"),
-    ("norm",     "explore/checks/check_normalization.py"),
-    ("export",   "explore/export/parquet_to_gpkg.py"),
-    ("scatter",  "explore/plots/plot_scatter.py"),
-    ("report",   "report/generate_report.py"),
+    ("test",   [PYTHON, "-m", "pytest", "tests/", "-v"]),
+    ("calc",   "run_index.py"),
+    ("report", "report/generate_report.py"),
 ]
 
 STAGE_NAMES = [name for name, _ in STAGES]
