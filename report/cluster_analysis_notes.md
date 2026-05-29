@@ -34,23 +34,19 @@ exemplifica o perfil.
 
 ### Alta Vulnerabilidade Social — Araioses (MA)
 
-*39 mil habitantes · Rural.* (Descreva aqui o contexto do município e por que
-ele exemplifica o perfil de alta vulnerabilidade social.)
+*39 mil habitantes · Rural.*
 
 ### Alta Exposição a Riscos Climáticos — Altamira (PA)
 
-*126 mil habitantes · Urbano.* (Descreva aqui o contexto do município e por que
-ele exemplifica o perfil de alta exposição a riscos climáticos.)
+*126 mil habitantes · Urbano.*
 
 ### Alta Injustiça Climática — Fátima do Sul (MS)
 
-*20 mil habitantes · Urbano.* (Descreva aqui o contexto do município e por que
-ele exemplifica o perfil de alta injustiça climática.)
+*20 mil habitantes · Urbano.*
 
 ### Baixa Injustiça Climática — Jaboticatubas (MG)
 
-*20 mil habitantes · Rural.* (Descreva aqui o contexto do município e por que
-ele exemplifica o perfil de baixa injustiça climática.)
+*20 mil habitantes · Rural.*
 
 ## Critérios de seleção dos estudos de caso
 

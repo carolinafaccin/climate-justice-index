@@ -1,5 +1,3 @@
-# Notas Metodológicas
-
 ## Dimensão de Grupos Prioritários (IP)
 
 **Fonte**: Os cinco indicadores desta dimensão utilizam os agregados por setor censitário do Censo Demográfico 2022 (IBGE).
