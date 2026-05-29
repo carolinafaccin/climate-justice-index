@@ -451,6 +451,7 @@ h2.section-title {
 /* ---- METHODOLOGICAL NOTES ---- */
 .notes-body h1 { font-size: 1.3rem; font-weight: 700; color: var(--dark); margin: 2rem 0 0.75rem; padding-bottom: 0.4rem; border-bottom: 2px solid var(--border); }
 .notes-body h2 { font-size: 1rem; font-weight: 700; color: var(--dark); margin: 1.5rem 0 0.5rem; }
+.notes-body h3 { font-size: 0.9rem; font-weight: 700; color: var(--dark); margin: 1.2rem 0 0.4rem; }
 .notes-body p  { font-size: 0.88rem; line-height: 1.7; color: #333; margin-bottom: 0.75rem; }
 .notes-body strong { color: var(--dark); }
 .notes-body em { color: #555; }
@@ -486,7 +487,7 @@ h2.section-title {
 .heat-legend { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; font-size: 0.78rem; color: #555; }
 .heat-bar { flex: 1; max-width: 220px; height: 10px; border-radius: 5px; background: linear-gradient(90deg,#1a9850,#ffffbf,#d73027); }
 .cluster-map { margin: 1.75rem 0; }
-.cluster-map img { width: 100%; max-width: 720px; display: block; margin: 0 auto; border-radius: 6px; border: 1px solid var(--border); }
+.cluster-map img { width: 100%; max-width: 560px; height: auto; display: block; margin: 0 auto; border-radius: 6px; border: 1px solid var(--border); }
 
 /* ---- FOOTER ---- */
 .report-footer {
