@@ -7,6 +7,9 @@
     "De 20.001 a 50.000 hab.",
     "De 50.001 a 100.000 hab.",
     "De 100.001 a 500.000 hab.",
-    "Mais de 500.000 hab."
+    "De 500.001 a 1 mi hab.",
+    "De 1 mi a 5 mi hab.",
+    "De 5 mi a 10 mi hab.",
+    "Mais de 10 mi hab."
   ]
 }
