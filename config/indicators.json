@@ -220,7 +220,7 @@
           "name": "mun_investimento_despesas",
           "abbr": "inv",
           "display_name": "Investimento",
-          "description": "Despesas municipais per capita, entre 2015 e 2024, em gestão ambiental",
+          "description": "Despesas liquidadas municipais per capita, entre 2015 e 2024, em gestão ambiental",
           "source": {
             "dir": "siconfi/t0",
             "year_start": 2015,

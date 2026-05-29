@@ -42,7 +42,7 @@ Sobre o `peso_renda`, ver P4.
 
 **Fonte**: Censo Demográfico 2022 (IBGE), agregados por setor censitário, com interpolação assimétrica para hexágonos H3 via `peso_dom`. O indicador V4 utiliza fonte distinta (CNES), descrita em seguida.
 
-### V1 — Renda *(IBGE, 2022)*
+### V1 — Baixa renda *(IBGE, 2022)*
 
 **Definição**: Inverso da renda média mensal do responsável pelo domicílio, com teto de 2 salários mínimos (R$ 2.424, referência 2022).
 
@@ -72,7 +72,7 @@ Sobre o `peso_renda`, ver P4.
 
 **Normalização**: A pontuação bruta foi normalizada com winsorização mais estreita (p3%–p97%) para suprimir o efeito de grandes clusters hospitalares. O valor final é invertido (1 − normalizado) para que maior inacessibilidade corresponda a maior vulnerabilidade.
 
-### V5 — Infraestrutura *(IBGE, 2022)*
+### V5 — Ausência de infraestrutura *(IBGE, 2022)*
 
 **Definição**: Percentual de domicílios sem coleta de esgoto, sem abastecimento de água e/ou sem coleta de lixo.
 
@@ -80,9 +80,9 @@ Sobre o `peso_renda`, ver P4.
 
 ## Dimensão de Exposição (IE)
 
-### E1 — Deslizamentos de terra *(NASA LHASA, 2017 - via Google Earth Engine)*
+### E1 — Movimentos de massa *(NASA LHASA, 2017 - via Google Earth Engine)*
 
-**Definição**: Fração da área de cada hexágono habitado classificada como Alta ou Muito Alta suscetibilidade a deslizamentos de terra segundo o NASA LHASA — Global Landslide Susceptibility Map. O LHASA v1 é um modelo multicritério (fuzzy overlay) que combina cinco fatores: declividade, litologia, perda de floresta, densidade de estradas e distância a falhas geológicas. Resolução nativa: ~1 km. Classes de 1 (Very Low) a 5 (Very High).
+**Definição**: Fração da área de cada hexágono habitado classificada como Alta ou Muito Alta suscetibilidade a movimentos de massa segundo o NASA LHASA — Global Landslide Susceptibility Map. O LHASA v1 é um modelo multicritério (fuzzy overlay) que combina cinco fatores: declividade, litologia, perda de floresta, densidade de estradas e distância a falhas geológicas. Resolução nativa: ~1 km. Classes de 1 (Very Low) a 5 (Very High).
 
 **Metodologia**: No GEE, o raster LHASA é carregado como asset, pixels NoData/oceano (valor 0) são mascarados, e por hexágono são calculados: `lhasa_mean` (valor médio das classes no hexágono, 1–5) e `lhasa_high_frac` (fração da área com LHASA ≥ 4, classes High ou Very High). A métrica do indicador é `lhasa_high_frac`.
 
@@ -100,9 +100,9 @@ Sobre o `peso_renda`, ver P4.
 
 **Camada base — HAND × JRC (cobertura nacional):** No GEE, cada pixel recebe um score pelo modelo de terreno HAND (Height Above Nearest Drainage, resolução ~30 m, derivado do SRTM), multiplicado pela máscara binária `JRC RP100_depth > 0` (perigo de inundação para período de retorno de 100 anos):
 
-| HAND | Score | Interpretação |
+| HAND | Score | Suscetibilidade |
 | --- | --- | --- |
-| 0–2 m | 1.00 | Muito alta suscetibilidade |
+| 0–2 m | 1.00 | Muito alta |
 | 2–4 m | 0.66 | Alta |
 | 4–6 m | 0.33 | Média |
 | > 6 m | 0.00 | Sem suscetibilidade |
@@ -155,11 +155,11 @@ se sgb_alta_mta_frac > 0.3 AND sgb_coverage_frac ≥ 0.5 → flood_score = 1.00
 
 **Normalização**: min-max com winsorização (p1%–p99%), sem ponderação pela quantidade de domicílios — a escala populacional é capturada nas dimensões de grupos prioritários e vulnerabilidade.
 
-## 4 Dimensão de Capacidade de Gestão Municipal
+## Dimensão de Capacidade de Gestão Municipal (IG)
 
 ### G1 — Investimento ambiental *(Siconfi/FINBRA, 2015–2024)*
 
-**Definição**: Média anual das despesas municipais liquidadas per capita em gestão ambiental (função orçamentária 18), entre 2015 e 2024.
+**Definição**: Despesas liquidadas municipais per capita, entre 2015 e 2024, em gestão ambiental (inclui preservação e conservação ambiental, controle ambiental, recuperação de áreas degradadas, recursos hídricos).
 
 **Fonte**: Os dados foram obtidos dos arquivos anuais do Sistema de Informações Contábeis e Fiscais do Setor Público Brasileiro (Siconfi/STN).
 
@@ -311,6 +311,13 @@ Utilizado para o indicador e4. Coleção NASA/USGS Collection 2 Level-2. Bandas:
 | função | Código da função de despesa (18 = Gestão Ambiental) | Filtro para g1 |
 | valor | Valor liquidado anual (R$) | g1 numerador |
 | populacao | População municipal | g1 denominador (per capita) |
+
+A categoria "Gestão Ambiental" inclui as seguintes sub-categorias:
+
+- Preservação e conservação ambiental
+- Controle ambiental
+- Recuperação de áreas degradadas
+- Recursos hídricos
 
 Período: 2015 a 2024 (arquivo anual por exercício).
 
