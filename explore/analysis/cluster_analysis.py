@@ -315,8 +315,9 @@ def _build_profile_table(df_all: pd.DataFrame) -> pd.DataFrame:
         stds  = sub[["iic_final"] + DIMS_COLS].std()
         zs    = {d: (means[d] - overall_means[d]) / max(overall_stds[d], 1e-9) for d in DIMS_COLS}
         row   = {
-            "perfis":       "",   # fill manually — used as profile label in generate_report
-            "cluster":      cl,
+            "perfis":              "",   # fill manually — used as profile label in generate_report
+            "dimensao_dominante":  "",   # fill manually — short label shown in cluster table (e.g. "Alto IP, IV / Baixo IG")
+            "cluster":             cl,
             "n_municipios": len(sub),
             "iic_final_mean": round(means["iic_final"], 4),
             "iic_final_std":  round(stds["iic_final"], 4),

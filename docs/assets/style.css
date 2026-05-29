@@ -471,6 +471,23 @@ h2.section-title {
 .notes-body ul, .notes-body ol { padding-left: 1.4rem; margin-bottom: 0.75rem; }
 .notes-body li { font-size: 0.88rem; line-height: 1.7; color: #333; }
 
+/* ---- CLUSTER ANALYSIS SECTION ---- */
+.clusters-body { margin-bottom: 2.5rem; }
+.clusters-body .cluster-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 1.25rem 0; }
+.clusters-body .cluster-table th { background: var(--dark); color: #fff; padding: 0.5rem 0.7rem; text-align: left; font-weight: 600; }
+.clusters-body .cluster-table td { padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.clusters-body .cluster-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.heatmap-wrap { margin: 1.75rem 0; }
+.heatmap-caption { font-size: 0.85rem; color: #555; margin-bottom: 0.5rem; }
+.clusters-body .heatmap { border-collapse: separate; border-spacing: 3px; width: 100%; table-layout: fixed; margin: 0; }
+.clusters-body .heatmap th { background: transparent; color: #555; font-size: 0.8rem; font-weight: 600; padding: 0.3rem; text-align: center; }
+.clusters-body .heatmap th.heat-rowlabel { text-align: left; width: 32%; font-weight: 500; padding-right: 0.6rem; }
+.clusters-body .heatmap td.heat-cell { text-align: center; padding: 0.85rem 0.25rem; border: none; border-radius: 4px; font-size: 0.85rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.heat-legend { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; font-size: 0.78rem; color: #555; }
+.heat-bar { flex: 1; max-width: 220px; height: 10px; border-radius: 5px; background: linear-gradient(90deg,#1a9850,#ffffbf,#d73027); }
+.cluster-map { margin: 1.75rem 0; }
+.cluster-map img { width: 100%; max-width: 720px; display: block; margin: 0 auto; border-radius: 6px; border: 1px solid var(--border); }
+
 /* ---- FOOTER ---- */
 .report-footer {
   text-align: center; font-size: 11px; color: #999;

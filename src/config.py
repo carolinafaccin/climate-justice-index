@@ -38,7 +38,7 @@ LOGS_DIR = BASE_DIR / "logs"
 
 # IBGE geographic mesh — single vintage constant used by all scripts
 IBGE_MALHA_VINTAGE  = "2024"
-MALHA_MUNICIPAL_DIR = RAW_DIR / "ibge" / "malha_municipal" / IBGE_MALHA_VINTAGE
+MALHA_MUNICIPAL_DIR = RAW_DIR / "ibge" / IBGE_MALHA_VINTAGE / "malha_municipal"
 
 
 def ensure_output_dirs() -> None:

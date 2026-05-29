@@ -796,9 +796,174 @@ def _render_methodological_notes() -> str:
 
 
 # ==============================================================================
+# CLUSTER ANALYSIS SECTION
+# ==============================================================================
+DIM_HEATMAP_LABELS = {"ip": "IP", "iv": "IV", "ie": "IE", "ig": "IG (invertido)"}
+
+_HEAT_GREEN  = (26, 152, 80)
+_HEAT_YELLOW = (255, 255, 191)
+_HEAT_RED    = (215, 48, 39)
+
+
+def _heat_color(z) -> str:
+    """Diverging green->yellow->red color for a z-score (red = worse)."""
+    if z is None or pd.isna(z):
+        return "#eeeeee"
+    z = max(-2.0, min(2.0, float(z)))
+    t = (z + 2.0) / 4.0
+    if t < 0.5:
+        a, b, u = _HEAT_GREEN, _HEAT_YELLOW, t / 0.5
+    else:
+        a, b, u = _HEAT_YELLOW, _HEAT_RED, (t - 0.5) / 0.5
+    rgb = tuple(int(round(a[i] + (b[i] - a[i]) * u)) for i in range(3))
+    return "#%02x%02x%02x" % rgb
+
+
+def _load_cluster_profile_table() -> "pd.DataFrame | None":
+    """Read the most recent 'perfis_cluster' sheet from the cluster analysis Excel."""
+    xlsx_files = sorted(
+        CLUSTER_ANALYSIS_DIR.glob("candidatos_estudo_de_caso_k*.xlsx"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not xlsx_files:
+        print("  [INFO] No cluster Excel found — cluster section omitted.")
+        return None
+    try:
+        df = pd.read_excel(xlsx_files[0], sheet_name="perfis_cluster")
+    except Exception as e:
+        print(f"  [WARNING] Could not read 'perfis_cluster' sheet: {e}")
+        return None
+    return df.sort_values("cluster").reset_index(drop=True)
+
+
+def _cluster_label(row) -> str:
+    perfil = str(row.get("perfis", "") or "").strip()
+    return perfil if perfil else f"Cluster {int(row['cluster'])}"
+
+
+def _build_cluster_table_html(df: pd.DataFrame) -> str:
+    rows = []
+    for _, r in df.iterrows():
+        n     = int(r["n_municipios"]) if pd.notna(r.get("n_municipios")) else 0
+        n_s   = f"{n:,}".replace(",", ".")
+        iic   = r.get("iic_final_mean")
+        iic_s = f"{float(iic):.3f}" if pd.notna(iic) else "—"
+        _raw_dom  = r.get("dimensao_dominante")
+        dom_short = "" if pd.isna(_raw_dom) else str(_raw_dom).strip()
+        dom   = dom_short if dom_short else str(r.get("descricao_perfil", "") or "").strip()
+        rows.append(
+            "<tr>"
+            f"<td>{_cluster_label(r)}</td>"
+            f"<td class='num'>{n_s}</td>"
+            f"<td class='num'>{iic_s}</td>"
+            f"<td>{dom}</td>"
+            "</tr>"
+        )
+    return (
+        "<table class='cluster-table'>"
+        "<thead><tr><th>Perfil</th><th>n</th><th>IIC médio</th>"
+        "<th>Dimensão dominante</th></tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table>"
+    )
+
+
+def _build_zscore_heatmap_html(df: pd.DataFrame) -> str:
+    dims = list(DIM_HEATMAP_LABELS.keys())
+    head = "".join(f"<th>{DIM_HEATMAP_LABELS[d]}</th>" for d in dims)
+    body = []
+    for _, r in df.iterrows():
+        cells = []
+        for d in dims:
+            z  = r.get(f"{d}_zscore")
+            bg = _heat_color(z)
+            zf = float(z) if pd.notna(z) else None
+            txt = "—" if zf is None else f"{zf:+.2f}"
+            fg  = "#fff" if (zf is not None and abs(zf) >= 1.2) else "#222"
+            cells.append(f"<td class='heat-cell' style='background:{bg};color:{fg}'>{txt}</td>")
+        body.append(f"<tr><th class='heat-rowlabel'>{_cluster_label(r)}</th>{''.join(cells)}</tr>")
+    legend = (
+        "<div class='heat-legend'>"
+        "<span>Melhor</span><span class='heat-bar'></span><span>Pior</span>"
+        "</div>"
+    )
+    return (
+        "<div class='heatmap-wrap'>"
+        "<p class='heatmap-caption'>Z-scores (desvios da média geral) por dimensão</p>"
+        "<table class='heatmap'>"
+        f"<thead><tr><th></th>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>"
+        f"{legend}</div>"
+    )
+
+
+def _prepare_cluster_map() -> "str | None":
+    """Convert the most recent cluster map PNG to WebP under docs/imgs; return relative path."""
+    pngs = sorted(
+        CLUSTER_ANALYSIS_DIR.glob("cluster_mapa_k*.png"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not pngs:
+        print("  [INFO] No cluster map PNG found — map omitted from cluster section.")
+        return None
+    out = IMGS_DIR / "cluster_mapa.webp"
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        Image.open(pngs[0]).save(out, "WEBP", quality=WEBP_QUALITY, method=4)
+    except Exception as e:
+        print(f"  [WARNING] Could not convert cluster map: {e}")
+        return None
+    return "imgs/cluster_mapa.webp"
+
+
+def _render_cluster_section() -> str:
+    """Render the cluster-analysis section: editable markdown + auto table/heatmap/map.
+
+    Returns an HTML fragment whose own '# Análise de Clusters' heading places it
+    above the methodological notes (it is prepended to notes_html in main())."""
+    notes_path = SCRIPT_DIR / "cluster_analysis_notes.md"
+    if not notes_path.exists():
+        print("  [INFO] cluster_analysis_notes.md not found — cluster section omitted.")
+        return ""
+    df = _load_cluster_profile_table()
+    if df is None or df.empty:
+        return ""
+
+    text = notes_path.read_text(encoding="utf-8")
+    try:
+        import markdown as md_lib
+        html = md_lib.markdown(text, extensions=["tables", "fenced_code"])
+    except ImportError:
+        print("  [WARNING] `markdown` package not installed — cluster notes render as plain text.")
+        escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        html = f"<pre>{escaped}</pre>"
+
+    map_rel  = _prepare_cluster_map()
+    map_html = (
+        f"<div class='cluster-map'><img src='{map_rel}' "
+        "alt='Mapa dos municípios brasileiros por perfil de cluster' loading='lazy'></div>"
+        if map_rel else ""
+    )
+    for token, repl in (
+        ("cluster_table",   _build_cluster_table_html(df)),
+        ("cluster_heatmap", _build_zscore_heatmap_html(df)),
+        ("cluster_map",     map_html),
+    ):
+        html = html.replace(f"<p>{{{{{token}}}}}</p>", repl).replace(f"{{{{{token}}}}}", repl)
+
+    return f"<div class='clusters-body' id='clusters'>{html}</div>"
+
+
+# ==============================================================================
 # HTML RENDERING
 # ==============================================================================
-def render_html(cities_data: list, sankey_json: str, nat_dist_img: str, notes_html: str) -> str:
+def render_html(
+    cities_data: list,
+    sankey_json: str,
+    nat_dist_img: str,
+    notes_html: str,
+    cluster_html: str = "",
+) -> str:
     from jinja2 import Environment, FileSystemLoader
     env  = Environment(loader=FileSystemLoader(str(TMPL_DIR)), autoescape=True)
     tmpl = env.get_template("report.html")
@@ -812,6 +977,7 @@ def render_html(cities_data: list, sankey_json: str, nat_dist_img: str, notes_ht
         sankey_json=sankey_json,
         nat_dist_img=nat_dist_img,
         notes_html=notes_html,
+        cluster_html=cluster_html,
         dim_colors=dim_colors,
     )
 
@@ -1290,6 +1456,23 @@ h2.section-title {
 .notes-body ul, .notes-body ol { padding-left: 1.4rem; margin-bottom: 0.75rem; }
 .notes-body li { font-size: 0.88rem; line-height: 1.7; color: #333; }
 
+/* ---- CLUSTER ANALYSIS SECTION ---- */
+.clusters-body { margin-bottom: 2.5rem; }
+.clusters-body .cluster-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 1.25rem 0; }
+.clusters-body .cluster-table th { background: var(--dark); color: #fff; padding: 0.5rem 0.7rem; text-align: left; font-weight: 600; }
+.clusters-body .cluster-table td { padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.clusters-body .cluster-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.heatmap-wrap { margin: 1.75rem 0; }
+.heatmap-caption { font-size: 0.85rem; color: #555; margin-bottom: 0.5rem; }
+.clusters-body .heatmap { border-collapse: separate; border-spacing: 3px; width: 100%; table-layout: fixed; margin: 0; }
+.clusters-body .heatmap th { background: transparent; color: #555; font-size: 0.8rem; font-weight: 600; padding: 0.3rem; text-align: center; }
+.clusters-body .heatmap th.heat-rowlabel { text-align: left; width: 32%; font-weight: 500; padding-right: 0.6rem; }
+.clusters-body .heatmap td.heat-cell { text-align: center; padding: 0.85rem 0.25rem; border: none; border-radius: 4px; font-size: 0.85rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.heat-legend { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; font-size: 0.78rem; color: #555; }
+.heat-bar { flex: 1; max-width: 220px; height: 10px; border-radius: 5px; background: linear-gradient(90deg,#1a9850,#ffffbf,#d73027); }
+.cluster-map { margin: 1.75rem 0; }
+.cluster-map img { width: 100%; max-width: 720px; display: block; margin: 0 auto; border-radius: 6px; border: 1px solid var(--border); }
+
 /* ---- FOOTER ---- */
 .report-footer {
   text-align: center; font-size: 11px; color: #999;
@@ -1348,11 +1531,14 @@ def main() -> None:
         if data:
             cities_data.append(data)
 
+    print("\nRendering cluster analysis section...")
+    cluster_html = _render_cluster_section()
+
     print("\nRendering methodological notes...")
     notes_html = _render_methodological_notes()
 
     print("\nRendering HTML...")
-    html = render_html(cities_data, sankey_json, "imgs/national_distribution.webp", notes_html)
+    html = render_html(cities_data, sankey_json, "imgs/national_distribution.webp", notes_html, cluster_html)
     (DOCS_DIR / "index.html").write_text(html, encoding="utf-8")
     (ASSETS_DIR / "style.css").write_text(CSS, encoding="utf-8")
 

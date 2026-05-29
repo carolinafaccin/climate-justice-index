@@ -88,6 +88,9 @@
   <ul class="toc">
     <li><a href="#intro">Sobre o Índice</a></li>
     <li><a href="#composicao">Composição do Índice</a></li>
+    {% if cluster_html %}
+    <li><a href="#clusters">Análise de Clusters</a></li>
+    {% endif %}
     {% if notes_html %}
     <li><a href="#notas">Notas Metodológicas</a></li>
     {% endif %}
@@ -291,6 +294,15 @@
   {% endfor %}
 
   {% endfor %}
+
+  <!-- ---- ANÁLISE DE CLUSTERS ---- -->
+  {% if cluster_html %}
+  <section class="page print-page-break" id="clusters">
+    <div class="notes-body">
+      {{ cluster_html | safe }}
+    </div>
+  </section>
+  {% endif %}
 
   <!-- ---- NOTAS METODOLÓGICAS ---- -->
   {% if notes_html %}
